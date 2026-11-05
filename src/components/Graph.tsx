@@ -56,7 +56,7 @@ export function Graph(p: Props) {
     count: total,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => ROW,
-    overscan: 10,
+    overscan: 30,
   });
   const items = v.getVirtualItems();
   const first = items[0]?.index ?? 0;
@@ -97,12 +97,16 @@ export function Graph(p: Props) {
     }
   });
 
-  useEffect(() => {
+  const draw = () => {
     const canvas = canvasRef.current;
     const el = scrollRef.current;
     if (!canvas || !el) return;
     const dpr = devicePixelRatio;
-    const h = el.clientHeight;
+    // Canvas scrolls with the rows and covers a screen above and below, so async/momentum scrolling never outruns a redraw.
+    const view = el.clientHeight;
+    const top = Math.max(0, Math.floor((el.scrollTop - view) / ROW) * ROW);
+    const h = Math.max(1, Math.min(view * 3, total * ROW - top));
+    canvas.style.top = `${top}px`;
     if (canvas.width !== graphW * dpr || canvas.height !== h * dpr) {
       canvas.width = graphW * dpr;
       canvas.height = h * dpr;
@@ -118,7 +122,6 @@ export function Graph(p: Props) {
     const colors = Array.from({ length: 8 }, (_, i) => css.getPropertyValue(`--lane-${i}`));
     const bg = css.getPropertyValue("--background");
     const color = (i: number) => colors[i % 8];
-    const top = el.scrollTop;
     const x = (col: number) => col * LANE + 14;
     const y = (visual: number) => visual * ROW + ROW / 2 - top;
     const start = Math.max(0, Math.floor(top / ROW) - 1);
@@ -208,7 +211,24 @@ export function Graph(p: Props) {
       ctx.arc(cx, cy, 8.5, Math.asin(6.6 / 8.5), Math.PI - Math.asin(6.6 / 8.5));
       ctx.fill();
     }
-  });
+  };
+  const drawRef = useRef(draw);
+  drawRef.current = draw;
+  useEffect(draw);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let frame = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => drawRef.current());
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(frame);
+    };
+  }, []);
 
   function onKey(e: React.KeyboardEvent) {
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
@@ -240,12 +260,6 @@ export function Graph(p: Props) {
         <span className="w-32 min-w-0 truncate pr-2">Date</span>
       </div>
       <div className="relative min-h-0 flex-1">
-        <canvas
-          ref={canvasRef}
-          aria-hidden
-          className="pointer-events-none absolute top-0 z-10"
-          style={{ left: REFS_W }}
-        />
         <div
           ref={scrollRef}
           tabIndex={0}
@@ -256,6 +270,7 @@ export function Graph(p: Props) {
           className="h-full overflow-auto outline-none"
         >
           <div className="relative" style={{ height: v.getTotalSize() }}>
+            <canvas ref={canvasRef} aria-hidden className="pointer-events-none absolute z-10" style={{ left: REFS_W }} />
             {items.map((it) => {
               const style = { top: it.start, height: ROW };
               if (off && it.index === 0) {
@@ -294,7 +309,10 @@ export function Graph(p: Props) {
                     background: sel ? `color-mix(in oklab, ${lane(r.color)} 26%, transparent)` : undefined,
                   }}
                 >
-                  <div className="flex shrink-0 items-center gap-1 overflow-hidden pr-2 pl-1.5" style={{ width: REFS_W - 4 }}>
+                  <div className="relative flex shrink-0 items-center gap-1 overflow-hidden pr-3 pl-1.5" style={{ width: REFS_W - 4 }}>
+                    {r.refs.length > 0 && (
+                      <span aria-hidden className="absolute top-1/2 right-0 left-3 h-[1.5px] -translate-y-1/2" style={{ background: lane(r.color) }} />
+                    )}
                     <Pills row={r} refMenu={p.refMenu} onDropRef={p.onDropRef} />
                   </div>
                   <div className="shrink-0" style={{ width: graphW }} />
@@ -329,7 +347,7 @@ function Pills({
   const Icon = main.kind === "tag" ? Tag : main.kind === "remote" ? Cloud : main.head ? Check : Laptop;
   return (
     <>
-      <span className="min-w-0" onContextMenu={(e) => e.stopPropagation()}>
+      <span className="relative min-w-0" onContextMenu={(e) => e.stopPropagation()}>
         <WithMenu
           items={() => refMenu(main)}
           draggable={main.kind !== "tag"}
@@ -342,7 +360,7 @@ function Pills({
           }}
           title={row.refs.map((r) => r.name).join("\n")}
           className="flex h-5 max-w-full cursor-grab items-center gap-1 rounded-full border px-2 text-xs font-semibold"
-          style={{ background: `color-mix(in oklab, ${lane(row.color)} 18%, transparent)`, borderColor: lane(row.color) }}
+          style={{ background: `color-mix(in oklab, ${lane(row.color)} 18%, var(--background))`, borderColor: lane(row.color) }}
         >
           <Icon className="size-3 shrink-0" aria-hidden />
           {tracked && <Cloud className="size-3 shrink-0" aria-label="tracked on remote" />}
@@ -350,7 +368,7 @@ function Pills({
         </WithMenu>
       </span>
       {rest.length > 0 && (
-        <span className="shrink-0 rounded-full border px-1.5 text-xs text-muted-foreground" title={rest.map((r) => r.name).join("\n")}>
+        <span className="relative shrink-0 rounded-full border bg-background px-1.5 text-xs text-muted-foreground" title={rest.map((r) => r.name).join("\n")}>
           +{rest.length}
         </span>
       )}

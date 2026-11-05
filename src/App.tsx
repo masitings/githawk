@@ -9,7 +9,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { api, type Opened } from "@/lib/api";
 import { ask, PromptHost } from "@/lib/prompt";
 import { RepoView } from "@/components/RepoView";
-import { SettingsDialog } from "@/components/SettingsDialog";
+import { SettingsView } from "@/components/SettingsView";
 import { CloneDialog } from "@/components/CloneDialog";
 import { actionFor } from "@/lib/settings";
 
@@ -161,13 +161,16 @@ export default function App() {
             <div
               key={t.root}
               className={`group flex h-8 max-w-56 items-center gap-1 rounded-t-lg px-3 text-[12.5px] ${
-                active === t.root ? "bg-panel" : "text-muted-foreground hover:bg-panel/60"
+                active === t.root && !settingsOpen ? "bg-panel" : "text-muted-foreground hover:bg-panel/60"
               }`}
             >
               <button
                 className="truncate"
                 title={t.root}
-                onClick={() => setActive(t.root)}
+                onClick={() => {
+                  setActive(t.root);
+                  setSettingsOpen(false);
+                }}
                 onDoubleClick={() => renameTab(t)}
               >
                 {t.alias}
@@ -181,16 +184,25 @@ export default function App() {
               </button>
             </div>
           ))}
-          <Button variant="ghost" size="icon-sm" aria-label="New tab" className="mb-1 text-muted-foreground" onClick={() => setActive(null)}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="New tab"
+            className="mb-1 text-muted-foreground"
+            onClick={() => {
+              setActive(null);
+              setSettingsOpen(false);
+            }}
+          >
             <Plus />
           </Button>
-          <Button variant="ghost" size="icon-sm" aria-label="Settings" className="mb-1.5 ml-auto text-muted-foreground" onClick={() => setSettingsOpen(true)}>
+          <Button variant="ghost" size="icon-sm" aria-label="Settings" aria-pressed={settingsOpen} className="mb-1.5 ml-auto text-muted-foreground" onClick={() => setSettingsOpen((o) => !o)}>
             <Settings />
           </Button>
         </nav>
 
         {tabs.map((t) => (
-          <div key={t.root} className={active === t.root ? "flex min-h-0 flex-1" : "hidden"}>
+          <div key={t.root} className={active === t.root && !settingsOpen ? "flex min-h-0 flex-1" : "hidden"}>
             <RepoView
               root={t.root}
               initial={opened[t.root]}
@@ -203,7 +215,9 @@ export default function App() {
           </div>
         ))}
 
-        {active === null && (
+        {settingsOpen && <SettingsView onClose={() => setSettingsOpen(false)} />}
+
+        {active === null && !settingsOpen && (
           <main className="flex flex-1 justify-center overflow-auto px-6 py-12">
             <div className="flex w-full max-w-[1080px] flex-col gap-7">
               <div>
@@ -257,7 +271,6 @@ export default function App() {
           </main>
         )}
       </div>
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <CloneDialog open={cloneOpen} onOpenChange={setCloneOpen} onClone={cloneFrom} />
       <PromptHost />
       <Toaster richColors theme="system" position="bottom-right" />

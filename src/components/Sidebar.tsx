@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Archive, Check, Cloud, Eye, EyeOff, FolderTree, GitPullRequest, Laptop, Package, Plus, Search, Tag, X } from "lucide-react";
+import { Archive, Check, ChevronRight, Cloud, Eye, EyeOff, Folder, FolderTree, GitPullRequest, Laptop, Package, Plus, Search, Tag, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Extras, Pr, RefLabel, Refs, Stash, Submodule, Worktree } from "@/lib/api";
 import { WithMenu, type MenuItem } from "@/components/Menu";
@@ -79,6 +79,39 @@ export function Sidebar(p: Props) {
     </li>
   );
 
+  const folders = <T,>(list: T[], name: (x: T) => string, render: (x: T, label: string) => ReactNode, key: string) => {
+    const groups = new Map<string, T[]>();
+    const nodes: [boolean, string, ReactNode][] = [];
+    for (const x of list) {
+      const n = name(x);
+      const i = n.indexOf("/");
+      if (i < 0) nodes.push([false, n, render(x, n)]);
+      else groups.set(n.slice(0, i), [...(groups.get(n.slice(0, i)) ?? []), x]);
+    }
+    for (const [g, items] of groups) {
+      nodes.push([
+        items.length > 1,
+        g,
+        items.length === 1 ? (
+          render(items[0], name(items[0]))
+        ) : (
+          <li key={`${key}/${g}/`}>
+            <details open={!!q} className="group/folder">
+              <summary className="flex h-7 cursor-pointer list-none items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground hover:bg-raised">
+                <ChevronRight className="size-3 shrink-0 transition-transform group-open/folder:rotate-90" aria-hidden />
+                <Folder className="size-3.5 shrink-0" aria-hidden />
+                <span className="min-w-0 flex-1 truncate">{g}</span>
+                <span className="text-xs">{items.length}</span>
+              </summary>
+              <ul className="pl-4">{items.map((x) => render(x, name(x).slice(g.length + 1)))}</ul>
+            </details>
+          </li>
+        ),
+      ]);
+    }
+    return nodes.sort(([fa, a], [fb, b]) => Number(fb) - Number(fa) || a.localeCompare(b)).map(([, , n]) => n);
+  };
+
   const icon = (I: typeof Laptop, label?: string) => <I className="size-3.5 shrink-0 text-muted-foreground" aria-label={label} />;
 
   return (
@@ -106,12 +139,13 @@ export function Sidebar(p: Props) {
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto px-2 pb-3">
         <Section title="Local" count={refs.local.length}>
-          {refs.local
-            .filter((b) => match(b.name))
-            .map((b) =>
+          {folders(
+            refs.local.filter((b) => match(b.name)),
+            (b) => b.name,
+            (b, label) =>
               item({
                 key: b.name,
-                label: b.name,
+                label,
                 icon: b.head ? <Check className="size-3.5 shrink-0" aria-label="current" /> : icon(Laptop),
                 menu: () => p.refMenu({ name: b.name, kind: "local", head: b.head }),
                 onClick: () => p.onJump(b.tip),
@@ -128,7 +162,8 @@ export function Sidebar(p: Props) {
                   </>
                 ),
               }),
-            )}
+            "local",
+          )}
         </Section>
         <Section title="Remote" count={refs.remote.length}>
           {[...byRemote].map(([remote, list]) => (
@@ -136,17 +171,21 @@ export function Sidebar(p: Props) {
               <details open>
                 <summary className="flex h-7 cursor-pointer items-center px-2 text-sm text-muted-foreground">{remote}</summary>
                 <ul className="pl-3">
-                  {list.map((r) =>
-                    item({
-                      key: r.name,
-                      label: r.name.slice(remote.length + 1),
-                      icon: icon(Cloud),
-                      menu: () => p.refMenu({ name: r.name, kind: "remote", head: false }),
-                      onClick: () => p.onJump(r.tip),
-                      onDouble: () => p.onCheckout(r.name.slice(remote.length + 1)),
-                      dim: p.hidden.has(r.name),
-                      extra: eye(r.name),
-                    }),
+                  {folders(
+                    list,
+                    (r) => r.name.slice(remote.length + 1),
+                    (r, label) =>
+                      item({
+                        key: r.name,
+                        label,
+                        icon: icon(Cloud),
+                        menu: () => p.refMenu({ name: r.name, kind: "remote", head: false }),
+                        onClick: () => p.onJump(r.tip),
+                        onDouble: () => p.onCheckout(r.name.slice(remote.length + 1)),
+                        dim: p.hidden.has(r.name),
+                        extra: eye(r.name),
+                      }),
+                    remote,
                   )}
                 </ul>
               </details>
@@ -246,7 +285,7 @@ function Section({ title, count, children, action }: { title: string; count: num
         <span className="font-medium">{count}</span>
         {action}
       </summary>
-      <ul>{children}</ul>
+      <ul className="max-h-37 overflow-y-auto">{children}</ul>
     </details>
   );
 }
