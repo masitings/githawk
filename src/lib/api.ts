@@ -72,6 +72,7 @@ export type Op =
   | { op: "delete-branch"; name: string; force: boolean }
   | { op: "delete-remote-branch"; remote: string; name: string }
   | { op: "set-upstream"; branch: string; upstream: string }
+  | { op: "unset-upstream"; branch: string }
   | { op: "fetch" }
   | { op: "pull"; mode: "merge" | "ff-only" | "rebase" }
   | { op: "push"; remote: string; branch: string; force: boolean; setUpstream: boolean }

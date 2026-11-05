@@ -55,6 +55,9 @@ pub enum Op {
         branch: String,
         upstream: String,
     },
+    UnsetUpstream {
+        branch: String,
+    },
     Fetch,
     Pull {
         mode: PullMode,
@@ -166,6 +169,7 @@ impl Op {
             Op::DeleteBranch { name, .. } => format!("Delete branch {name}"),
             Op::DeleteRemoteBranch { remote, name } => format!("Delete {remote}/{name}"),
             Op::SetUpstream { branch, .. } => format!("Set upstream of {branch}"),
+            Op::UnsetUpstream { branch } => format!("Unset upstream of {branch}"),
             Op::Fetch => "Fetch".into(),
             Op::Pull { .. } => "Pull".into(),
             Op::Push { branch, .. } => format!("Push {branch}"),
@@ -239,6 +243,7 @@ impl Op {
             Op::SetUpstream { branch, upstream } => {
                 a(&["branch", "--set-upstream-to", arg(upstream)?, arg(branch)?])
             }
+            Op::UnsetUpstream { branch } => a(&["branch", "--unset-upstream", arg(branch)?]),
             Op::Fetch => a(&["fetch", "--all", "--prune", "--progress"]),
             Op::Pull { mode } => a(&[
                 "pull",
@@ -718,6 +723,10 @@ mod tests {
         op(r#"{"op":"reset","id":"HEAD","mode":"keep"}"#);
         assert_eq!(std::fs::read_to_string(p.join("a.txt")).unwrap(), "kept\n");
         op(r#"{"op":"discard","tracked":["a.txt"],"untracked":[]}"#);
+        op(r#"{"op":"set-upstream","branch":"feat","upstream":"main"}"#);
+        assert_eq!(git(&["config", "branch.feat.merge"]), "refs/heads/main\n");
+        op(r#"{"op":"unset-upstream","branch":"feat"}"#);
+        assert!(run(p, &["config", "branch.feat.merge"], None).is_err());
         op(r#"{"op":"rename-branch","old":"feat","new":"feature"}"#);
         op(r#"{"op":"delete-branch","name":"feature","force":true}"#);
         op(r#"{"op":"delete-tag","name":"v1"}"#);

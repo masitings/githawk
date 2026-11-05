@@ -620,6 +620,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
       : { label: `Solo ${name}`, onSelect: () => setFilter({ ...view, solo: name }) },
   ];
 
+  const upstreamOf = (branch: string) => refs?.local.find((b) => b.name === branch)?.upstream ?? null;
   const refMenu = (ref: RefLabel): MenuItem[] => {
     if (ref.kind === "tag") {
       return [
@@ -663,15 +664,25 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
       { label: `Push ${ref.name}`, onSelect: () => push(ref.name) },
       ...(ref.head ? [] : [{ label: `Check out ${ref.name} in a new worktree…`, onSelect: () => addWorktree(ref.name) }]),
       {
-        label: "Set upstream…",
+        label: upstreamOf(ref.name) ? "Change upstream…" : "Set upstream…",
         onSelect: async () => {
+          const current = upstreamOf(ref.name);
           const r = await ask({
-            title: `Set upstream of ${ref.name}`,
-            fields: [{ name: "up", label: "Upstream", value: `${refs?.remotes[0] ?? "origin"}/${ref.name}` }],
+            title: `${current ? "Change" : "Set"} upstream of ${ref.name}`,
+            description: current ? `Currently tracking ${current}.` : "Pull and push will use this remote branch by default.",
+            fields: [
+              {
+                name: "up",
+                label: "Upstream",
+                value: current ?? `${refs?.remotes[0] ?? "origin"}/${ref.name}`,
+                suggestions: refs?.remote.map((x) => x.name).filter((n) => !n.endsWith("/HEAD")),
+              },
+            ],
           });
-          if (r) run({ op: "set-upstream", branch: ref.name, upstream: r.text.up.trim() });
+          if (r) run({ op: "set-upstream", branch: ref.name, upstream: r.text.up.trim() }, `${ref.name} now tracks ${r.text.up.trim()}`);
         },
       },
+      ...(upstreamOf(ref.name) ? [{ label: "Unset upstream", onSelect: () => run({ op: "unset-upstream", branch: ref.name }, `${ref.name} no longer tracks a remote branch`) }] : []),
       {
         label: `Rename ${ref.name}…`,
         onSelect: async () => {

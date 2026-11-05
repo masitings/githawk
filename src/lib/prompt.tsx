@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
-type Field = { name: string; label: string; value?: string; placeholder?: string; optional?: boolean };
+type Field = { name: string; label: string; value?: string; placeholder?: string; optional?: boolean; suggestions?: string[] };
 type Check = { name: string; label: string; value?: boolean };
 type Ask = {
   title: string;
@@ -81,8 +81,16 @@ export function PromptHost() {
                 autoFocus={i === 0}
                 value={text[f.name] ?? ""}
                 placeholder={f.placeholder}
+                list={f.suggestions && `ask-${f.name}`}
                 onChange={(e) => setText({ ...text, [f.name]: e.currentTarget.value })}
               />
+              {f.suggestions && (
+                <datalist id={`ask-${f.name}`}>
+                  {f.suggestions.map((s) => (
+                    <option key={s} value={s} />
+                  ))}
+                </datalist>
+              )}
             </label>
           ))}
           {a?.checks?.map((c) => (
