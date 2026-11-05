@@ -1,9 +1,11 @@
+use std::collections::VecDeque;
 use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::sync::RwLock;
+use std::sync::{Mutex, RwLock};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -461,10 +463,19 @@ pub fn set_identity(name: &str, email: &str, signing_key: &str) {
             env.push((format!("GIT_COMMITTER_{k}"), v.trim().to_owned()));
         }
     }
-    if !signing_key.trim().is_empty() {
-        env.push(("GIT_CONFIG_COUNT".into(), "1".into()));
+    let key = signing_key.trim();
+    if !key.is_empty() {
+        let ssh = key.ends_with(".pub") || key.starts_with("ssh-") || key.starts_with("key::");
+        env.push((
+            "GIT_CONFIG_COUNT".into(),
+            if ssh { "2" } else { "1" }.into(),
+        ));
         env.push(("GIT_CONFIG_KEY_0".into(), "user.signingkey".into()));
-        env.push(("GIT_CONFIG_VALUE_0".into(), signing_key.trim().to_owned()));
+        env.push(("GIT_CONFIG_VALUE_0".into(), key.to_owned()));
+        if ssh {
+            env.push(("GIT_CONFIG_KEY_1".into(), "gpg.format".into()));
+            env.push(("GIT_CONFIG_VALUE_1".into(), "ssh".into()));
+        }
     }
     *PROFILE_ENV.write().unwrap() = env;
 }
@@ -482,35 +493,126 @@ pub fn git(cwd: &Path) -> Command {
     c
 }
 
+/// One git invocation, as shown in the command log.
+#[derive(Debug, Clone, Serialize)]
+pub struct Logged {
+    pub cwd: String,
+    pub args: Vec<String>,
+    /// None when the process was killed or failed to start.
+    pub code: Option<i32>,
+    pub ms: u64,
+    /// Unix seconds.
+    pub time: i64,
+    pub stderr: String,
+}
+
+// ponytail: in-memory ring buffer, lost on restart; persist per repo if people ask for history across sessions
+const LOG_CAP: usize = 500;
+static LOG: Mutex<VecDeque<Logged>> = Mutex::new(VecDeque::new());
+
+pub fn log_command<S: AsRef<str>>(
+    cwd: &Path,
+    args: &[S],
+    code: Option<i32>,
+    started: Instant,
+    stderr: &str,
+) {
+    let tail: String = stderr
+        .trim()
+        .chars()
+        .rev()
+        .take(2000)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    let entry = Logged {
+        cwd: cwd.to_string_lossy().into_owned(),
+        args: args.iter().map(|a| a.as_ref().to_owned()).collect(),
+        code,
+        ms: started.elapsed().as_millis() as u64,
+        time: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs() as i64),
+        stderr: tail,
+    };
+    let mut log = LOG.lock().unwrap();
+    if log.len() == LOG_CAP {
+        log.pop_front();
+    }
+    log.push_back(entry);
+}
+
+/// Commands run in `root`, newest first.
+pub fn command_log(root: &Path) -> Vec<Logged> {
+    let root = root.to_string_lossy();
+    LOG.lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .filter(|e| e.cwd == root)
+        .cloned()
+        .collect()
+}
+
 pub fn run(cwd: &Path, args: &[&str], stdin: Option<&str>) -> Result<String, String> {
+    let started = Instant::now();
+    let r = run_inner(cwd, args, stdin);
+    let code = match &r {
+        Ok(_) => Some(0),
+        Err((code, _)) => *code,
+    };
+    log_command(
+        cwd,
+        args,
+        code,
+        started,
+        r.as_ref().err().map_or("", |e| e.1.as_str()),
+    );
+    r.map_err(|e| e.1)
+}
+
+fn run_inner(
+    cwd: &Path,
+    args: &[&str],
+    stdin: Option<&str>,
+) -> Result<String, (Option<i32>, String)> {
     let mut c = git(cwd);
     c.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
     if stdin.is_some() {
         c.stdin(Stdio::piped());
     }
-    let mut child = c.spawn().map_err(|e| format!("Failed to run git: {e}"))?;
+    let mut child = c
+        .spawn()
+        .map_err(|e| (None, format!("Failed to run git: {e}")))?;
     if let Some(input) = stdin {
         child
             .stdin
             .take()
             .unwrap()
             .write_all(input.as_bytes())
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| (None, e.to_string()))?;
     }
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    let out = child
+        .wait_with_output()
+        .map_err(|e| (None, e.to_string()))?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     } else {
+        let code = out.status.code();
         let err = String::from_utf8_lossy(&out.stderr);
         let out = String::from_utf8_lossy(&out.stdout);
-        Err(format!(
-            "{}{}",
-            err.trim(),
-            if err.trim().is_empty() {
-                out.trim()
-            } else {
-                ""
-            }
+        Err((
+            code,
+            format!(
+                "{}{}",
+                err.trim(),
+                if err.trim().is_empty() {
+                    out.trim()
+                } else {
+                    ""
+                }
+            ),
         ))
     }
 }
@@ -523,6 +625,18 @@ pub fn init(dir: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn logs_commands_per_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        run(dir.path(), &["init", "-q"], None).unwrap();
+        assert!(run(dir.path(), &["rev-parse", "--verify", "nope"], None).is_err());
+        let log = command_log(dir.path());
+        assert_eq!(log.len(), 2);
+        assert_eq!(log[0].args, ["rev-parse", "--verify", "nope"]);
+        assert_ne!(log[0].code, Some(0));
+        assert_eq!(log[1].code, Some(0));
+    }
 
     #[test]
     fn refuses_option_injection() {

@@ -1,19 +1,25 @@
 import { useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { MessageSquarePlus, X } from "lucide-react";
+import { ChevronDown, GitMerge, MessageSquarePlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { api, type LineComment, type Line, type Pr, type Review } from "@/lib/api";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { confirm } from "@/lib/prompt";
+import { useSettings } from "@/lib/settings";
+import { api, type LineComment, type Line, type MergeMethod, type Pr, type Review } from "@/lib/api";
 import { parseUnified, type PatchFile } from "@/lib/unified";
 
-type Props = { account: string; url: string; pr: Pr; onCheckout: () => void; onClose: () => void };
+type Props = { account: string; url: string; pr: Pr; onCheckout: () => void; onMerged: () => void; onClose: () => void };
 
 const tone = { "+": "bg-[var(--diff-add)]", "-": "bg-[var(--diff-del)]", " ": "" };
 const lineOf = (l: Line) => (l.origin === "-" ? l.old : l.new) ?? 0;
 const keyOf = (path: string, l: Line) => `${path}:${l.origin}:${lineOf(l)}`;
 
-export function PrView({ account, url, pr, onCheckout, onClose }: Props) {
+const MERGE_LABEL: Record<MergeMethod, string> = { merge: "Create a merge commit", squash: "Squash and merge", rebase: "Rebase and merge" };
+
+export function PrView({ account, url, pr, onCheckout, onMerged, onClose }: Props) {
+  const { prMerge } = useSettings();
   const [files, setFiles] = useState<PatchFile[] | null>(null);
   const [error, setError] = useState("");
   const [comments, setComments] = useState<Record<string, LineComment>>({});
@@ -31,6 +37,20 @@ export function PrView({ account, url, pr, onCheckout, onClose }: Props) {
       .then((d) => setFiles(parseUnified(d)))
       .catch((e) => setError(String(e)));
   }, [account, url, pr.number]);
+
+  async function merge(method: MergeMethod) {
+    if (!(await confirm(`${MERGE_LABEL[method]} #${pr.number}?`, `${pr.head} goes into ${pr.base} on the server.`, "Merge"))) return;
+    setBusy(true);
+    try {
+      await api.mergePr(account, url, pr.number, method);
+      toast.success(`Merged #${pr.number}`);
+      onMerged();
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submit(event: Review["event"]) {
     setBusy(true);
@@ -62,6 +82,23 @@ export function PrView({ account, url, pr, onCheckout, onClose }: Props) {
         <Button size="xs" variant="ghost" onClick={() => openUrl(pr.url)}>
           Open in browser
         </Button>
+        <span className="flex">
+          <Button size="xs" className="rounded-r-none" disabled={busy || pr.draft} title={pr.draft ? "Draft pull requests can't be merged" : undefined} onClick={() => merge(prMerge)}>
+            <GitMerge /> {MERGE_LABEL[prMerge]}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button size="icon-xs" className="rounded-l-none border-l border-primary-foreground/20" aria-label="Merge options" disabled={busy || pr.draft} />}>
+              <ChevronDown />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              {(Object.keys(MERGE_LABEL) as MergeMethod[]).map((m) => (
+                <DropdownMenuItem key={m} onClick={() => merge(m)}>
+                  {MERGE_LABEL[m]}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </span>
         <Button size="icon-xs" variant="ghost" aria-label="Close pull request" onClick={onClose}>
           <X />
         </Button>

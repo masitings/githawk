@@ -91,6 +91,14 @@ pub trait HostingProvider {
     fn review(&self, _remote: &RemoteRef, _number: u64, _review: &Review) -> Result<(), String> {
         Err("Reviewing pull requests in GitHawk isn't supported for this provider yet".into())
     }
+    /// `method` is "merge", "squash" or "rebase".
+    fn merge(&self, _remote: &RemoteRef, _number: u64, _method: &str) -> Result<(), String> {
+        Err("Merging pull requests from GitHawk isn't supported for this provider yet".into())
+    }
+    /// Combined CI status of a commit: "success", "failure" or "pending"; None when it has no checks.
+    fn checks(&self, _remote: &RemoteRef, _sha: &str) -> Result<Option<String>, String> {
+        Ok(None)
+    }
 }
 
 /// API base for a provider; `host` is set for self-hosted servers.
@@ -183,6 +191,18 @@ fn parse_remote_with(url: &str, servers: &[Server]) -> Option<RemoteRef> {
         key,
         api,
     })
+}
+
+fn combine(states: &[&str]) -> Option<String> {
+    if states.is_empty() {
+        None
+    } else if states.contains(&"failure") {
+        Some("failure".into())
+    } else if states.contains(&"pending") {
+        Some("pending".into())
+    } else {
+        Some("success".into())
+    }
 }
 
 fn client() -> Client {
@@ -282,6 +302,35 @@ impl HostingProvider for GitHub {
             .collect())
     }
 
+    fn merge(&self, remote: &RemoteRef, number: u64, method: &str) -> Result<(), String> {
+        let url = format!("{}/repos/{}/pulls/{number}/merge", self.api, remote.path);
+        send(self.req(client().put(url).json(&json!({"merge_method": method})))).map(drop)
+    }
+
+    fn checks(&self, remote: &RemoteRef, sha: &str) -> Result<Option<String>, String> {
+        let base = format!("{}/repos/{}/commits/{sha}", self.api, remote.path);
+        let runs = send(self.req(client().get(format!("{base}/check-runs?per_page=100"))))?;
+        let status = send(self.req(client().get(format!("{base}/status"))))?;
+        let mut states: Vec<&str> = runs["check_runs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|r| match (r["status"].as_str(), r["conclusion"].as_str()) {
+                (Some("completed"), Some("success" | "neutral" | "skipped")) => "success",
+                (Some("completed"), _) => "failure",
+                _ => "pending",
+            })
+            .collect();
+        if status["total_count"].as_u64().unwrap_or(0) > 0 {
+            states.push(match status["state"].as_str() {
+                Some("success") => "success",
+                Some("pending") => "pending",
+                _ => "failure",
+            });
+        }
+        Ok(combine(&states))
+    }
+
     fn prs(&self, remote: &RemoteRef) -> Result<Vec<Pr>, String> {
         let url = format!(
             "{}/repos/{}/pulls?state=open&per_page=100",
@@ -369,6 +418,42 @@ impl HostingProvider for GitLab {
                 private: r["visibility"].as_str() != Some("public"),
             })
             .collect())
+    }
+
+    fn merge(&self, remote: &RemoteRef, number: u64, method: &str) -> Result<(), String> {
+        if method == "rebase" {
+            return Err("GitLab sets rebase merging per project; merge or squash instead".into());
+        }
+        let url = format!(
+            "{}/projects/{}/merge_requests/{number}/merge",
+            self.api,
+            enc(&remote.path)
+        );
+        send(
+            self.req(
+                client()
+                    .put(url)
+                    .json(&json!({"squash": method == "squash"})),
+            ),
+        )
+        .map(drop)
+    }
+
+    fn checks(&self, remote: &RemoteRef, sha: &str) -> Result<Option<String>, String> {
+        let url = format!(
+            "{}/projects/{}/repository/commits/{sha}",
+            self.api,
+            enc(&remote.path)
+        );
+        let v = send(self.req(client().get(url)))?;
+        Ok(v["last_pipeline"]["status"].as_str().map(|st| {
+            match st {
+                "success" | "skipped" | "manual" => "success",
+                "failed" | "canceled" => "failure",
+                _ => "pending",
+            }
+            .to_owned()
+        }))
     }
 
     fn prs(&self, remote: &RemoteRef) -> Result<Vec<Pr>, String> {
@@ -515,6 +600,45 @@ impl HostingProvider for Bitbucket {
                 private: r["is_private"].as_bool().unwrap_or(false),
             })
             .collect())
+    }
+
+    fn merge(&self, remote: &RemoteRef, number: u64, method: &str) -> Result<(), String> {
+        let strategy = match method {
+            "squash" => "squash",
+            "rebase" => "rebase_merge",
+            _ => "merge_commit",
+        };
+        let url = format!(
+            "https://api.bitbucket.org/2.0/repositories/{}/pullrequests/{number}/merge",
+            remote.path
+        );
+        send(
+            self.req(
+                client()
+                    .post(url)
+                    .json(&json!({"merge_strategy": strategy})),
+            ),
+        )
+        .map(drop)
+    }
+
+    fn checks(&self, remote: &RemoteRef, sha: &str) -> Result<Option<String>, String> {
+        let url = format!(
+            "https://api.bitbucket.org/2.0/repositories/{}/commit/{sha}/statuses?pagelen=100",
+            remote.path
+        );
+        let v = send(self.req(client().get(url)))?;
+        let states: Vec<&str> = v["values"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|x| match x["state"].as_str() {
+                Some("SUCCESSFUL") => "success",
+                Some("INPROGRESS") => "pending",
+                _ => "failure",
+            })
+            .collect();
+        Ok(combine(&states))
     }
 
     fn prs(&self, remote: &RemoteRef) -> Result<Vec<Pr>, String> {
@@ -928,6 +1052,30 @@ pub async fn hosting_pr_diff(account: String, url: String, number: u64) -> Res<S
 }
 
 #[tauri::command]
+pub async fn hosting_merge(account: String, url: String, number: u64, method: String) -> Res<()> {
+    blocking(move || with_remote(&url, &account, |p, r| p.merge(r, number, &method))).await
+}
+
+/// CI status for each commit; commits without checks are left out.
+#[tauri::command]
+pub async fn hosting_checks(
+    account: String,
+    url: String,
+    shas: Vec<String>,
+) -> Res<std::collections::HashMap<String, String>> {
+    blocking(move || {
+        with_remote(&url, &account, |p, r| {
+            Ok(shas
+                .iter()
+                .filter(|s| s.len() >= 7 && s.chars().all(|c| c.is_ascii_hexdigit()))
+                .filter_map(|s| p.checks(r, s).ok().flatten().map(|st| (s.clone(), st)))
+                .collect())
+        })
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn hosting_review(account: String, url: String, number: u64, review: Review) -> Res<()> {
     blocking(move || with_remote(&url, &account, |p, r| p.review(r, number, &review))).await
 }
@@ -935,6 +1083,17 @@ pub async fn hosting_review(account: String, url: String, number: u64, review: R
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn combines_check_states() {
+        assert_eq!(combine(&[]), None);
+        assert_eq!(combine(&["success", "pending"]).as_deref(), Some("pending"));
+        assert_eq!(
+            combine(&["success", "failure", "pending"]).as_deref(),
+            Some("failure")
+        );
+        assert_eq!(combine(&["success"]).as_deref(), Some("success"));
+    }
 
     #[test]
     fn parses_remote_urls() {

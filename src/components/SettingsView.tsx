@@ -1,16 +1,16 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
-import { ExternalLink, Pencil, Plus, Search, Settings as Gear, ShieldCheck, Trash2, X } from "lucide-react";
+import { Copy, ExternalLink, KeyRound, Pencil, Plus, Search, Settings as Gear, ShieldCheck, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { api, type Provider, type Server } from "@/lib/api";
-import { ACTIONS, account, activeProfile, comboOf, getSettings, prettyCombo, setSettings, useSettings, type Profile } from "@/lib/settings";
-import { confirm } from "@/lib/prompt";
+import { api, type GpgKey, type Provider, type Server, type SshKey } from "@/lib/api";
+import { ACTIONS, DEFAULT_SHORTCUTS, account, activeProfile, comboOf, getSettings, prettyCombo, setSettings, useSettings, type Profile } from "@/lib/settings";
+import { ask, confirm } from "@/lib/prompt";
 
 type Keyed = { id: string; name: string; url: string; hint: string };
 
-const PROVIDERS: (Keyed & { id: Provider })[] = [
+export const PROVIDERS: (Keyed & { id: Provider })[] = [
   {
     id: "github",
     name: "GitHub",
@@ -45,19 +45,21 @@ const AI_KEYS: Record<"anthropic" | "openai", Keyed> = {
 const SECTIONS = [
   ["general", "General", "theme appearance dark light fetch background"],
   ["profiles", "Profiles", "author name email signing key identity azure organisation"],
-  ["integrations", "Integrations", "github gitlab bitbucket azure token server enterprise self-hosted"],
+  ["integrations", "Integrations", "github gitlab bitbucket azure token server enterprise self-hosted pull request merge checks ci"],
+  ["keys", "SSH, GPG and HTTPS", "ssh key generate gpg signing credential helper https password"],
+  ["git", "Git", "default branch pull rebase prune upstream line endings autocrlf sign version"],
   ["ai", "AI assistant", "anthropic openai ollama model key commit message explain changelog"],
   ["shortcuts", "Keyboard shortcuts", "keys hotkeys keyboard"],
 ] as const;
-type Section = (typeof SECTIONS)[number][0];
+export type SettingsSection = (typeof SECTIONS)[number][0];
 
 const control = "h-8 rounded-[7px] border bg-panel-2 px-2.5 text-[12.5px] text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
 const kbd = "rounded-[4px] border bg-panel-2 px-1.5 py-px font-mono text-[11px] text-muted-foreground";
 
-export function SettingsView({ onClose }: { onClose: () => void }) {
+export function SettingsView({ initial = "general", onClose }: { initial?: SettingsSection; onClose: () => void }) {
   const s = useSettings();
   const profile = activeProfile(s);
-  const [section, setSection] = useState<Section>("general");
+  const [section, setSection] = useState<SettingsSection>(initial);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
@@ -289,6 +291,26 @@ export function SettingsView({ onClose }: { onClose: () => void }) {
                   </Button>
                 </div>
               </Card>
+              <H3>Pull requests</H3>
+              <Card>
+                <Row label="Default merge method" text="Used by the Merge button on a pull request">
+                  <div role="group" aria-label="Default merge method" className="inline-flex overflow-hidden rounded-[7px] border">
+                    {(["merge", "squash", "rebase"] as const).map((m) => (
+                      <button
+                        key={m}
+                        aria-pressed={s.prMerge === m}
+                        onClick={() => setSettings({ prMerge: m })}
+                        className={`h-8 px-3 text-[12.5px] capitalize ${s.prMerge === m ? "bg-raised font-medium text-foreground" : "bg-panel-2 text-muted-foreground hover:text-foreground"}`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                </Row>
+                <Row label="Show checks in the graph" text="CI status next to branches that have an open pull request">
+                  <Switch label="Show checks in the graph" checked={s.showChecks} onChange={(v) => setSettings({ showChecks: v })} />
+                </Row>
+              </Card>
               <Note>Tokens are kept in the OS keychain (Keychain, Credential Manager or Secret Service), never in files or logs, and are only sent to their provider.</Note>
             </>
           )}
@@ -339,6 +361,8 @@ export function SettingsView({ onClose }: { onClose: () => void }) {
             </>
           )}
 
+          {section === "keys" && <KeysSection profile={profile} onUse={(signingKey) => updateProfile({ signingKey })} />}
+          {section === "git" && <GitSection />}
           {section === "shortcuts" && <Shortcuts shortcuts={s.shortcuts} />}
         </div>
       </main>
@@ -458,16 +482,26 @@ function Shortcuts({ shortcuts }: { shortcuts: Record<string, string> }) {
   return (
     <>
       <Title title="Keyboard shortcuts" text="Every action can be reached from the keyboard. Click a shortcut to change it." />
-      <label className="mt-5 mb-3 flex h-8 w-72 max-w-full items-center gap-2 rounded-[7px] border bg-panel-2 px-2.5 text-dim focus-within:ring-3 focus-within:ring-ring/50">
-        <Search className="size-3.5 shrink-0" aria-hidden />
-        <input
-          placeholder="Search actions or keys"
-          aria-label="Search shortcuts"
-          value={query}
-          onChange={(e) => setQuery(e.currentTarget.value)}
-          className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-dim"
-        />
-      </label>
+      <div className="mt-5 mb-3 flex flex-wrap items-center gap-2">
+        <label className="flex h-8 w-72 max-w-full items-center gap-2 rounded-[7px] border bg-panel-2 px-2.5 text-dim focus-within:ring-3 focus-within:ring-ring/50">
+          <Search className="size-3.5 shrink-0" aria-hidden />
+          <input
+            placeholder="Search actions or keys"
+            aria-label="Search shortcuts"
+            value={query}
+            onChange={(e) => setQuery(e.currentTarget.value)}
+            className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-dim"
+          />
+        </label>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="ml-auto"
+          onClick={async () => (await confirm("Reset all shortcuts?", "Every shortcut goes back to GitHawk's default.", "Reset")) && setSettings({ shortcuts: DEFAULT_SHORTCUTS })}
+        >
+          Reset to defaults
+        </Button>
+      </div>
       <Card>
         {rows.map(([id, label]) => (
           <ShortcutRow key={id} id={id} label={label} combo={shortcuts[id] ?? ""} />
@@ -513,5 +547,208 @@ function ShortcutRow({ id, label, combo }: { id: string; label: string; combo: s
         <Pencil className="ml-1 size-3 text-dim" aria-hidden />
       </button>
     </div>
+  );
+}
+
+export function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={`relative h-[18px] w-8 shrink-0 rounded-full border transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none ${
+        checked ? "border-primary bg-primary" : "bg-raised"
+      }`}
+    >
+      <span className={`absolute top-1/2 size-3 -translate-y-1/2 rounded-full transition-all ${checked ? "left-[15px] bg-primary-foreground" : "left-0.5 bg-muted-foreground"}`} />
+    </button>
+  );
+}
+
+function KeysSection({ profile, onUse }: { profile: Profile; onUse: (key: string) => void }) {
+  const [ssh, setSsh] = useState<SshKey[] | null>(null);
+  const [gpg, setGpg] = useState<GpgKey[] | null>(null);
+  const [config, setConfig] = useState<Record<string, string>>({});
+
+  const load = () => {
+    api.sshKeys().then(setSsh).catch((e) => toast.error(String(e)));
+    api.gpgKeys().then(setGpg).catch(() => setGpg([]));
+    api.gitConfig().then(setConfig).catch(() => {});
+  };
+  useEffect(load, []);
+
+  const copy = (key: SshKey) => navigator.clipboard.writeText(key.public).then(() => toast.success("Public key copied"));
+
+  async function generate() {
+    const r = await ask({
+      title: "Generate SSH key",
+      description: "Creates an ed25519 key pair in ~/.ssh without a passphrase. Add the public key to your hosting provider afterwards.",
+      fields: [
+        { name: "name", label: "File name", value: "id_ed25519_githawk" },
+        { name: "email", label: "Comment (usually your email)", value: profile.gitEmail },
+      ],
+      confirm: "Generate",
+    });
+    if (!r) return;
+    try {
+      const key = await api.sshGenerate(r.text.name.trim(), r.text.email.trim());
+      await navigator.clipboard.writeText(key.public).catch(() => {});
+      toast.success("Key created and public key copied", {
+        action: { label: "Add to GitHub", onClick: () => openUrl("https://github.com/settings/ssh/new") },
+      });
+      load();
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
+  const helper = config["credential.helper"] ?? "";
+  const using = (key: string) => profile.signingKey.trim() === key;
+
+  return (
+    <>
+      <Title title="SSH, GPG and HTTPS" text="Keys for authenticating with remotes and signing commits. Nothing here leaves your machine." />
+      <H3>SSH keys</H3>
+      <Card>
+        {ssh?.map((k) => (
+          <Row key={k.path} label={k.path.split(/[\\/]/).pop()!.replace(/\.pub$/, "")} text={`${k.kind}${k.comment ? ` · ${k.comment}` : ""}`}>
+            {using(k.path) ? (
+              <span className="rounded-full border border-primary/60 bg-primary/15 px-2 py-0.5 text-xs font-medium">Signing key · {profile.name}</span>
+            ) : (
+              <Button variant="ghost" size="sm" onClick={() => onUse(k.path)}>
+                Use for signing
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={() => copy(k)}>
+              <Copy /> Copy public key
+            </Button>
+          </Row>
+        ))}
+        {ssh && !ssh.length && <p className="border-b px-4 py-3 text-sm text-dim">No SSH keys in ~/.ssh yet.</p>}
+        <div className="px-4 py-2.5">
+          <Button variant="ghost" size="sm" onClick={generate}>
+            <KeyRound /> Generate new key
+          </Button>
+        </div>
+      </Card>
+      <H3>GPG keys</H3>
+      <Card>
+        {gpg?.map((k) => (
+          <Row key={k.id} label={k.uid || k.id} text={k.id}>
+            {using(k.id) ? (
+              <span className="rounded-full border border-primary/60 bg-primary/15 px-2 py-0.5 text-xs font-medium">Signing key · {profile.name}</span>
+            ) : (
+              <Button variant="ghost" size="sm" onClick={() => onUse(k.id)}>
+                Use for signing
+              </Button>
+            )}
+          </Row>
+        ))}
+        {gpg && !gpg.length && <p className="px-4 py-3 text-sm text-dim">No GPG secret keys found, or gpg isn't installed.</p>}
+      </Card>
+      <H3>HTTPS</H3>
+      <Card>
+        <Row label="Credential helper" text="Remembers HTTPS passwords and tokens for git push and pull. Global git setting.">
+          <select
+            aria-label="Credential helper"
+            className={`${control} w-50`}
+            value={helper}
+            onChange={async (e) => {
+              const v = e.currentTarget.value;
+              try {
+                await api.setGitConfig("credential.helper", v);
+                setConfig({ ...config, "credential.helper": v });
+              } catch (err) {
+                toast.error(String(err));
+              }
+            }}
+          >
+            <option value="">None</option>
+            <option value="osxkeychain">macOS Keychain</option>
+            <option value="manager">Git Credential Manager</option>
+            <option value="libsecret">libsecret (Linux)</option>
+            <option value="cache">Cache in memory</option>
+            <option value="store">Plain-text file</option>
+            {helper && !["osxkeychain", "manager", "libsecret", "cache", "store"].includes(helper) && <option value={helper}>{helper}</option>}
+          </select>
+        </Row>
+      </Card>
+      <Note>The signing key you pick is used for commits made with the {profile.name} profile. SSH keys sign with gpg.format=ssh automatically.</Note>
+    </>
+  );
+}
+
+function GitSection() {
+  const [config, setConfig] = useState<Record<string, string> | null>(null);
+  const [version, setVersion] = useState("");
+  useEffect(() => {
+    api.gitConfig().then(setConfig).catch((e) => toast.error(String(e)));
+    api.gitVersion().then(setVersion).catch(() => {});
+  }, []);
+
+  async function set(key: string, value: string) {
+    try {
+      await api.setGitConfig(key, value);
+      setConfig((c) => ({ ...c, [key]: value }));
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
+  if (!config) return <Title title="Git" text="Loading global git settings…" />;
+  const on = (k: string) => config[k] === "true";
+
+  return (
+    <>
+      <Title title="Git" text="Global git settings from ~/.gitconfig. They apply on the command line too." />
+      <H3>Branches and syncing</H3>
+      <Card>
+        <Row label="Default branch name" text="Used by git init and new repositories">
+          <Input
+            aria-label="Default branch name"
+            defaultValue={config["init.defaultBranch"]}
+            placeholder="master"
+            onBlur={(e) => e.currentTarget.value.trim() !== config["init.defaultBranch"] && set("init.defaultBranch", e.currentTarget.value.trim())}
+            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+            className={`${control} w-50`}
+          />
+        </Row>
+        <Row label="When pulling" text="What git pull does when your branch and the remote have both moved">
+          <select aria-label="When pulling" className={`${control} w-50`} value={config["pull.rebase"]} onChange={(e) => set("pull.rebase", e.currentTarget.value)}>
+            <option value="">Git default (merge)</option>
+            <option value="false">Merge</option>
+            <option value="true">Rebase</option>
+            <option value="merges">Rebase, keep merges</option>
+          </select>
+        </Row>
+        <Row label="Prune on fetch" text="Remove remote branches that were deleted on the server">
+          <Switch label="Prune on fetch" checked={on("fetch.prune")} onChange={(v) => set("fetch.prune", v ? "true" : "")} />
+        </Row>
+        <Row label="Set upstream automatically" text="Push new branches without --set-upstream">
+          <Switch label="Set upstream automatically" checked={on("push.autoSetupRemote")} onChange={(v) => set("push.autoSetupRemote", v ? "true" : "")} />
+        </Row>
+      </Card>
+      <H3>Commits</H3>
+      <Card>
+        <Row label="Sign commits by default" text="Uses the signing key from your profile">
+          <Switch label="Sign commits by default" checked={on("commit.gpgSign")} onChange={(v) => set("commit.gpgSign", v ? "true" : "")} />
+        </Row>
+        <Row label="Line endings" text="core.autocrlf: convert CRLF and LF when checking files in and out">
+          <select aria-label="Line endings" className={`${control} w-50`} value={config["core.autocrlf"]} onChange={(e) => set("core.autocrlf", e.currentTarget.value)}>
+            <option value="">Leave as is</option>
+            <option value="input">LF in repo (input)</option>
+            <option value="true">CRLF on checkout (Windows)</option>
+            <option value="false">Never convert</option>
+          </select>
+        </Row>
+      </Card>
+      <H3>About</H3>
+      <Card>
+        <Row label="Git version" text="GitHawk runs the git found on your PATH">
+          <span className="font-mono text-xs text-muted-foreground">{version || "not found"}</span>
+        </Row>
+      </Card>
+    </>
   );
 }

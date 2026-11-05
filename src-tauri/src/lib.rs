@@ -1,5 +1,6 @@
 mod ai;
 mod hosting;
+mod keys;
 mod term;
 
 use std::collections::HashMap;
@@ -284,6 +285,8 @@ struct Extras {
     submodules: Vec<inspect::Submodule>,
     lfs: bool,
     flow: Option<inspect::Flow>,
+    /// Unix seconds of the last fetch, from FETCH_HEAD.
+    fetched: Option<i64>,
 }
 
 #[tauri::command]
@@ -294,7 +297,28 @@ async fn extras(root: String) -> Res<Extras> {
             submodules: inspect::submodules(&root).unwrap_or_default(),
             lfs: inspect::uses_lfs(&root),
             flow: inspect::gitflow(&root),
+            fetched: inspect::last_fetch(&root),
         })
+    })
+    .await
+}
+
+#[tauri::command]
+fn command_log(root: String) -> Vec<ops::Logged> {
+    ops::command_log(Path::new(&root))
+}
+
+#[tauri::command]
+async fn git_version() -> Res<String> {
+    blocking(|| {
+        let out = ops::git(&std::env::temp_dir())
+            .arg("--version")
+            .output()
+            .map_err(|e| format!("git not found: {e}"))?;
+        Ok(String::from_utf8_lossy(&out.stdout)
+            .trim()
+            .trim_start_matches("git version ")
+            .to_owned())
     })
     .await
 }
@@ -354,6 +378,7 @@ fn cancel(running: State<'_, Running>) {
 }
 
 async fn stream(app: &AppHandle, running: &Running, dir: &Path, args: &[String]) -> Res<()> {
+    let started = std::time::Instant::now();
     let mut stderr = {
         let mut slot = running.0.lock().unwrap();
         if slot.is_some() {
@@ -392,6 +417,8 @@ async fn stream(app: &AppHandle, running: &Running, dir: &Path, args: &[String])
     let status = blocking(move || child.unwrap().wait().map_err(|e| e.to_string())).await?;
     let _ = app.emit("git-progress", "");
     let log = log?;
+    let clean: Vec<_> = log.lines().filter(|l| !l.contains('\r')).collect();
+    ops::log_command(dir, args, status.code(), started, &clean.join("\n"));
     if status.success() {
         Ok(())
     } else if status.code().is_none() {
@@ -525,6 +552,8 @@ pub fn run() {
             reflog,
             files,
             extras,
+            command_log,
+            git_version,
             signature,
             set_identity,
             term::term_open,
@@ -541,7 +570,14 @@ pub fn run() {
             hosting::hosting_set_servers,
             hosting::hosting_pr_diff,
             hosting::hosting_review,
+            hosting::hosting_merge,
+            hosting::hosting_checks,
             ai::ai_run,
+            keys::ssh_keys,
+            keys::ssh_generate,
+            keys::gpg_keys,
+            keys::git_config_get,
+            keys::git_config_set,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

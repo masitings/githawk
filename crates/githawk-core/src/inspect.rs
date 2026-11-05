@@ -280,6 +280,21 @@ pub fn signature(root: &str, id: &str) -> Result<Signature, String> {
     })
 }
 
+/// When the repository was last fetched, from FETCH_HEAD's modification time (Unix seconds).
+pub fn last_fetch(root: &str) -> Option<i64> {
+    let repo = git2::Repository::open(root).ok()?;
+    let modified = std::fs::metadata(repo.path().join("FETCH_HEAD"))
+        .ok()?
+        .modified()
+        .ok()?;
+    Some(
+        modified
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_secs() as i64,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

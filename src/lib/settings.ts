@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { api, type AiTask, type Server } from "@/lib/api";
+import { api, type AiTask, type MergeMethod, type Server } from "@/lib/api";
 
 export type Profile = {
   id: string;
@@ -20,6 +20,8 @@ export type Settings = {
   ai: { provider: "anthropic" | "openai"; model: string; baseUrl: string };
   /** Self-hosted GitHub Enterprise, GitLab and Bitbucket Data Center servers. */
   servers: Server[];
+  prMerge: MergeMethod;
+  showChecks: boolean;
 };
 
 export const ACTIONS: Record<string, string> = {
@@ -34,13 +36,14 @@ export const ACTIONS: Record<string, string> = {
   stash: "Stash changes",
   pop: "Pop stash",
   terminal: "Toggle terminal",
-  reflog: "Reflog",
+  reflog: "Reflog and command log",
   agents: "Agent sessions",
+  sidebar: "Toggle sidebar",
   search: "Search commits",
   settings: "Settings",
 };
 
-const DEFAULT_SHORTCUTS: Record<string, string> = {
+export const DEFAULT_SHORTCUTS: Record<string, string> = {
   palette: "mod+k",
   files: "mod+p",
   undo: "mod+z",
@@ -54,6 +57,7 @@ const DEFAULT_SHORTCUTS: Record<string, string> = {
   terminal: "ctrl+`",
   reflog: "mod+shift+r",
   agents: "mod+shift+a",
+  sidebar: "mod+shift+b",
   search: "mod+f",
   settings: "mod+,",
 };
@@ -66,6 +70,8 @@ const DEFAULT: Settings = {
   autoFetch: 0,
   ai: { provider: "anthropic", model: "claude-opus-5-5", baseUrl: "" },
   servers: [],
+  prMerge: "merge",
+  showChecks: true,
 };
 
 const KEY = "githawk.settings";

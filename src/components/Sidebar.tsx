@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { Archive, Check, ChevronRight, Cloud, Eye, EyeOff, Folder, FolderTree, GitPullRequest, Laptop, Package, Plus, Search, Tag, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { Extras, Pr, RefLabel, Refs, Stash, Submodule, Worktree } from "@/lib/api";
+import type { CheckState, Extras, Pr, RefLabel, Refs, Stash, Submodule, Worktree } from "@/lib/api";
+import { CheckBadge } from "@/components/Graph";
 import { WithMenu, type MenuItem } from "@/components/Menu";
 
 type Props = {
@@ -20,6 +21,7 @@ type Props = {
   worktreeMenu: (w: Worktree) => MenuItem[];
   submoduleMenu: (s: Submodule) => MenuItem[];
   prMenu: (p: Pr) => MenuItem[];
+  checks: Record<string, CheckState>;
 };
 
 export function Sidebar(p: Props) {
@@ -212,6 +214,7 @@ export function Sidebar(p: Props) {
                   </span>
                 ),
                 icon: icon(GitPullRequest),
+                extra: <CheckBadge state={p.checks[pr.head]} />,
                 menu: () => p.prMenu(pr),
                 onClick: () => p.prMenu(pr).find((m) => m !== "-")?.onSelect(),
                 dim: pr.draft,

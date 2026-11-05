@@ -115,7 +115,16 @@ pub fn run(root: &str, base: Option<&str>, todo: &str) -> Result<(), String> {
         Some(b) => return Err(format!("Invalid base {b:?}")),
         None => c.arg("--root"),
     };
+    let started = std::time::Instant::now();
     let out = c.output().map_err(|e| format!("Failed to run git: {e}"))?;
+    let args = ["rebase", "-i", "--autostash", base.unwrap_or("--root")];
+    ops::log_command(
+        Path::new(root),
+        &args,
+        out.status.code(),
+        started,
+        &String::from_utf8_lossy(&out.stderr),
+    );
     if out.status.success() {
         Ok(())
     } else {

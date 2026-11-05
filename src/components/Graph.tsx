@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Check, Cloud, Laptop, Tag } from "lucide-react";
-import { api, date, lane, type Opened, type RefLabel, type Row } from "@/lib/api";
+import { Check, CircleCheck, CircleDot, CircleX, Cloud, Laptop, Tag } from "lucide-react";
+import { api, date, lane, type CheckState, type Opened, type RefLabel, type Row } from "@/lib/api";
 import { WithMenu, type MenuItem } from "@/components/Menu";
 
 const ROW = 28;
@@ -33,7 +33,25 @@ type Props = {
   refMenu: (ref: RefLabel) => MenuItem[];
   wipMenu: () => MenuItem[];
   onDropRef: (source: RefLabel, target: RefLabel) => void;
+  /** CI status by branch name, for branches with an open pull request. */
+  checks: Record<string, CheckState>;
 };
+
+const CHECK_ICON = { success: CircleCheck, failure: CircleX, pending: CircleDot };
+const CHECK_TEXT = { success: "Checks passed", failure: "Checks failed", pending: "Checks running" };
+export function CheckBadge({ state }: { state: CheckState | undefined }) {
+  if (!state) return null;
+  const I = CHECK_ICON[state];
+  return (
+    <I
+      role="img"
+      aria-label={CHECK_TEXT[state]}
+      className={`size-3.5 shrink-0 ${state === "success" ? "text-[var(--lane-3)]" : state === "failure" ? "text-del" : "text-[var(--lane-0)]"}`}
+    >
+      <title>{CHECK_TEXT[state]}</title>
+    </I>
+  );
+}
 
 export function Graph(p: Props) {
   const pages = useRef(new Map<number, Row[] | null>());
@@ -313,7 +331,7 @@ export function Graph(p: Props) {
                     {r.refs.length > 0 && (
                       <span aria-hidden className="absolute top-1/2 right-0 left-3 h-[1.5px] -translate-y-1/2" style={{ background: lane(r.color) }} />
                     )}
-                    <Pills row={r} refMenu={p.refMenu} onDropRef={p.onDropRef} />
+                    <Pills row={r} refMenu={p.refMenu} onDropRef={p.onDropRef} checks={p.checks} />
                   </div>
                   <div className="shrink-0" style={{ width: graphW }} />
                   <span className="min-w-40 flex-1 truncate pr-3">{r.summary}</span>
@@ -333,10 +351,12 @@ function Pills({
   row,
   refMenu,
   onDropRef,
+  checks,
 }: {
   row: Row;
   refMenu: (ref: RefLabel) => MenuItem[];
   onDropRef: (source: RefLabel, target: RefLabel) => void;
+  checks: Record<string, CheckState>;
 }) {
   if (!row.refs.length) return null;
   const main = row.refs[0];
@@ -365,6 +385,7 @@ function Pills({
           <Icon className="size-3 shrink-0" aria-hidden />
           {tracked && <Cloud className="size-3 shrink-0" aria-label="tracked on remote" />}
           <span className="truncate">{main.name}</span>
+          <CheckBadge state={checks[main.name]} />
         </WithMenu>
       </span>
       {rest.length > 0 && (

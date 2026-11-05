@@ -32,6 +32,7 @@ import {
   type Op,
   type OpLog,
   type Opened,
+  type CheckState,
   type Pr,
   type RefLabel,
   type Refs,
@@ -52,6 +53,7 @@ import { WorkPanel } from "@/components/WorkPanel";
 import { CommitPanel } from "@/components/CommitPanel";
 import { ConflictView } from "@/components/ConflictView";
 import { FileView } from "@/components/FileView";
+import { StatusBar } from "@/components/StatusBar";
 import { ReflogView } from "@/components/ReflogView";
 import { RebaseDialog } from "@/components/RebaseDialog";
 import { PrView } from "@/components/PrView";
@@ -108,6 +110,21 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
   const [extras, setExtras] = useState<Extras | null>(null);
   const [prs, setPrs] = useState<{ list: Pr[] | null; error: string } | null>(null);
   const [hostAccount, setHostAccount] = useState("");
+  const [checks, setChecks] = useState<Record<string, CheckState>>({});
+  const [sidebar, setSidebar] = useState(() => {
+    try {
+      return localStorage.getItem("githawk.sidebar") !== "hidden";
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("githawk.sidebar", sidebar ? "shown" : "hidden");
+    } catch {
+      /* preference just won't persist */
+    }
+  }, [sidebar]);
   const [oplog, setOplog] = useState<OpLog | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [marked, setMarked] = useState<Map<string, number>>(new Map());
@@ -212,6 +229,33 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
   useEffect(() => {
     loadPrs();
   }, [loadPrs, settings.active]);
+
+  const remoteName = refs && (refs.urls.origin ? "origin" : Object.keys(refs.urls)[0]);
+  const heads = (prs?.list ?? [])
+    .map((pr) => [pr.head, (refs?.remote.find((r) => r.name === `${remoteName}/${pr.head}`) ?? refs?.local.find((b) => b.name === pr.head))?.tip] as const)
+    .filter((h): h is readonly [string, string] => !!h[1]);
+  const headsKey = heads.map((h) => h.join("@")).join(",");
+  useEffect(() => {
+    if (!settings.showChecks || !originUrl || !hostAccount || !heads.length) return setChecks({});
+    const load = () =>
+      api
+        .checks(hostAccount, originUrl, heads.map((h) => h[1]))
+        .then((bySha) => {
+          const next: Record<string, CheckState> = {};
+          for (const [name, sha] of heads) {
+            if (!bySha[sha]) continue;
+            next[name] = bySha[sha];
+            next[`${remoteName}/${name}`] = bySha[sha];
+          }
+          setChecks(next);
+        })
+        .catch(() => setChecks({}));
+    load();
+    // ponytail: 2-minute poll; webhooks would need a server, which GitHawk doesn't have
+    const t = setInterval(load, 120_000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [headsKey, settings.showChecks, hostAccount, originUrl]);
 
   const run = useCallback(
     async (op: Op, label?: string): Promise<boolean> => {
@@ -751,6 +795,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
     },
     search: () => searchRef.current?.focus(),
     settings: onOpenSettings,
+    sidebar: () => setSidebar((x) => !x),
   };
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
@@ -952,25 +997,28 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
       )}
 
       <div className="flex min-h-0 flex-1">
-        <Sidebar
-          refs={refs}
-          extras={extras}
-          prs={prs}
-          hidden={new Set(view.hidden)}
-          solo={view.solo}
-          onToggleHidden={(name) =>
-            setFilter({ ...view, hidden: view.hidden.includes(name) ? view.hidden.filter((h) => h !== name) : [...view.hidden, name] })
-          }
-          onClearSolo={() => setFilter({ ...view, solo: null })}
-          onJump={select}
-          onCheckout={(name) => run({ op: "checkout", name })}
-          onCreatePr={createPr}
-          refMenu={refMenu}
-          stashMenu={stashMenu}
-          worktreeMenu={worktreeMenu}
-          submoduleMenu={submoduleMenu}
-          prMenu={prMenu}
-        />
+        {sidebar && (
+          <Sidebar
+            refs={refs}
+            extras={extras}
+            prs={prs}
+            hidden={new Set(view.hidden)}
+            solo={view.solo}
+            onToggleHidden={(name) =>
+              setFilter({ ...view, hidden: view.hidden.includes(name) ? view.hidden.filter((h) => h !== name) : [...view.hidden, name] })
+            }
+            onClearSolo={() => setFilter({ ...view, solo: null })}
+            onJump={select}
+            onCheckout={(name) => run({ op: "checkout", name })}
+            onCreatePr={createPr}
+            refMenu={refMenu}
+            stashMenu={stashMenu}
+            worktreeMenu={worktreeMenu}
+            submoduleMenu={submoduleMenu}
+            prMenu={prMenu}
+            checks={checks}
+          />
+        )}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="flex min-h-0 flex-1">
             {center.kind === "diff" && (
@@ -999,6 +1047,11 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
                 url={originUrl}
                 pr={center.pr}
                 onCheckout={() => run({ op: "checkout", name: center.pr.head })}
+                onMerged={() => {
+                  setCenter({ kind: "graph" });
+                  loadPrs();
+                  actions.fetch();
+                }}
                 onClose={() => setCenter({ kind: "graph" })}
               />
             )}
@@ -1033,6 +1086,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
                     refMenu={refMenu}
                     wipMenu={wipMenu}
                     onDropRef={onDropRef}
+                    checks={checks}
                   />
                 )
               ) : (
@@ -1096,6 +1150,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
           )}
         </aside>
       </div>
+      <StatusBar root={root} fetched={extras?.fetched} urls={refs?.urls} />
       {rebaseBase && (
         <RebaseDialog
           root={root}

@@ -3,15 +3,16 @@ import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { open as pickFolder } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { Toaster, toast } from "sonner";
-import { FolderGit2, FolderOpen, GitBranchPlus, Plus, Settings, X, DownloadCloud } from "lucide-react";
+import { Check, ChevronDown, FolderGit2, FolderOpen, GitBranchPlus, Plus, Settings, UserRound, X, DownloadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { api, type Opened } from "@/lib/api";
 import { ask, PromptHost } from "@/lib/prompt";
 import { RepoView } from "@/components/RepoView";
-import { SettingsView } from "@/components/SettingsView";
+import { PROVIDERS, SettingsView, type SettingsSection } from "@/components/SettingsView";
 import { CloneDialog } from "@/components/CloneDialog";
-import { actionFor } from "@/lib/settings";
+import { account, actionFor, activeProfile, setSettings, useSettings } from "@/lib/settings";
 
 type Tab = { root: string; alias: string };
 
@@ -37,7 +38,11 @@ export default function App() {
   const [active, setActive] = useState<string | null>(() => load("githawk.tabs")[0]?.root ?? null);
   const [opened, setOpened] = useState<Record<string, Opened>>({});
   const [progress, setProgress] = useState("");
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsPage, setSettingsPage] = useState<SettingsSection | null>(null);
+  const settingsOpen = settingsPage !== null;
+  const setSettingsOpen = (open: boolean, page: SettingsSection = "general") => setSettingsPage(open ? page : null);
+  const prefs = useSettings();
+  const profile = activeProfile(prefs);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [goto, setGoto] = useState<{ root: string; ref: string; n: number } | null>(null);
 
@@ -196,7 +201,28 @@ export default function App() {
           >
             <Plus />
           </Button>
-          <Button variant="ghost" size="icon-sm" aria-label="Settings" aria-pressed={settingsOpen} className="mb-1.5 ml-auto text-muted-foreground" onClick={() => setSettingsOpen((o) => !o)}>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <button className="mb-[7px] ml-auto flex h-[26px] shrink-0 items-center gap-1.5 rounded-full border bg-panel-2 px-2.5 text-xs hover:bg-raised focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none" />
+              }
+            >
+              <UserRound className="size-3.5 text-muted-foreground" aria-hidden />
+              Profile: {profile.name}
+              <ChevronDown className="size-3 text-muted-foreground" aria-hidden />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-48">
+              {prefs.profiles.map((p) => (
+                <DropdownMenuItem key={p.id} onClick={() => setSettings({ active: p.id })}>
+                  <Check className={p.id === prefs.active ? "" : "invisible"} aria-hidden />
+                  {p.name}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setSettingsOpen(true, "profiles")}>Manage profiles…</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button variant="ghost" size="icon-sm" aria-label="Settings" aria-pressed={settingsOpen} className="mb-1.5 text-muted-foreground" onClick={() => setSettingsOpen(!settingsOpen)}>
             <Settings />
           </Button>
         </nav>
@@ -215,7 +241,7 @@ export default function App() {
           </div>
         ))}
 
-        {settingsOpen && <SettingsView onClose={() => setSettingsOpen(false)} />}
+        {settingsPage && <SettingsView key={settingsPage} initial={settingsPage} onClose={() => setSettingsOpen(false)} />}
 
         {active === null && !settingsOpen && (
           <main className="flex flex-1 justify-center overflow-auto px-6 py-12">
@@ -244,8 +270,8 @@ export default function App() {
                 ))}
               </div>
               {progress && <p className="truncate text-xs text-muted-foreground">{progress}</p>}
-              {recents.length > 0 && (
-                <section className="rounded-xl border bg-panel p-2">
+              <div className="flex flex-wrap items-start gap-5">
+                <section className="min-w-0 flex-[999_1_540px] rounded-xl border bg-panel p-2">
                   <h2 className="px-3 pt-2 pb-2.5 text-[14px] font-bold">Recent repositories</h2>
                   {recents.map((r) => (
                     <div key={r.root} className="group flex items-center rounded-lg hover:bg-raised">
@@ -265,8 +291,10 @@ export default function App() {
                       </button>
                     </div>
                   ))}
+                  {!recents.length && <p className="px-3 pb-3 text-sm text-dim">Repositories you open show up here.</p>}
                 </section>
-              )}
+                <WelcomeSide onSettings={(page) => setSettingsOpen(true, page)} />
+              </div>
             </div>
           </main>
         )}
@@ -275,5 +303,59 @@ export default function App() {
       <PromptHost />
       <Toaster richColors theme="system" position="bottom-right" />
     </TooltipProvider>
+  );
+}
+
+function WelcomeSide({ onSettings }: { onSettings: (page: SettingsSection) => void }) {
+  const prefs = useSettings();
+  const profile = activeProfile(prefs);
+  const [connected, setConnected] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    Promise.all(PROVIDERS.map((p) => api.hasToken(account(p.id)).catch(() => false))).then((r) =>
+      setConnected(Object.fromEntries(PROVIDERS.map((p, i) => [p.id, r[i]]))),
+    );
+  }, [prefs.active]);
+
+  return (
+    <div className="flex min-w-0 flex-[1_1_320px] flex-col gap-4">
+      <section className="rounded-xl border bg-panel px-4 pt-3.5 pb-1.5">
+        <h2 className="text-[14px] font-bold">Hosting providers</h2>
+        <p className="pt-0.5 pb-1.5 text-xs text-dim">Used for clone, pull requests and checks</p>
+        {PROVIDERS.map((p) => (
+          <div key={p.id} className="flex items-center gap-2.5 border-b py-2 last:border-b-0">
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold">{p.name}</span>
+              <span className="flex items-center gap-1.5 text-xs text-dim">
+                <span aria-hidden className={`size-[7px] rounded-full ${connected[p.id] ? "bg-[var(--lane-3)]" : "bg-dim/50"}`} />
+                {connected[p.id] ? "Connected" : "Not connected"}
+              </span>
+            </span>
+            {!connected[p.id] && (
+              <Button variant="outline" size="sm" onClick={() => onSettings("integrations")}>
+                Connect
+              </Button>
+            )}
+          </div>
+        ))}
+      </section>
+      <section className="flex flex-col gap-2 rounded-xl border bg-panel px-4 py-3.5">
+        <h2 className="text-[14px] font-bold">Profile</h2>
+        <div className="flex items-center gap-2.5">
+          <span aria-hidden className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-[var(--lane-0)] bg-raised text-xs font-semibold">
+            {(profile.name.trim()[0] ?? "?").toUpperCase()}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-semibold">{profile.name}</div>
+            <div className="truncate text-xs text-dim">
+              {profile.gitEmail || "Uses git config identity"}
+              {profile.signingKey && " · signing on"}
+            </div>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => onSettings("profiles")}>
+            Manage
+          </Button>
+        </div>
+      </section>
+    </div>
   );
 }
