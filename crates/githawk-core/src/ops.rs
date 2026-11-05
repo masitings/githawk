@@ -21,6 +21,8 @@ pub enum ResetMode {
     Soft,
     Mixed,
     Hard,
+    /// Like hard, but refuses to overwrite uncommitted changes.
+    Keep,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -364,6 +366,7 @@ impl Op {
                     ResetMode::Soft => "--soft",
                     ResetMode::Mixed => "--mixed",
                     ResetMode::Hard => "--hard",
+                    ResetMode::Keep => "--keep",
                 },
                 arg(id)?,
             ]),
@@ -711,6 +714,10 @@ mod tests {
         op(r#"{"op":"stash-pop","index":0}"#);
         op(r#"{"op":"discard","tracked":["a.txt"],"untracked":[]}"#);
         op(r#"{"op":"reset","id":"HEAD~1","mode":"hard"}"#);
+        std::fs::write(p.join("a.txt"), "kept\n").unwrap();
+        op(r#"{"op":"reset","id":"HEAD","mode":"keep"}"#);
+        assert_eq!(std::fs::read_to_string(p.join("a.txt")).unwrap(), "kept\n");
+        op(r#"{"op":"discard","tracked":["a.txt"],"untracked":[]}"#);
         op(r#"{"op":"rename-branch","old":"feat","new":"feature"}"#);
         op(r#"{"op":"delete-branch","name":"feature","force":true}"#);
         op(r#"{"op":"delete-tag","name":"v1"}"#);

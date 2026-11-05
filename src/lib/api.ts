@@ -93,7 +93,7 @@ export type Op =
   | { op: "submodule-update" }
   | { op: "worktree-add"; path: string; branch: string; create: boolean }
   | { op: "worktree-remove"; path: string; force: boolean }
-  | { op: "reset"; id: string; mode: "soft" | "mixed" | "hard" }
+  | { op: "reset"; id: string; mode: "soft" | "mixed" | "hard" | "keep" }
   | { op: "flow-init"; main: string; develop: string; createDevelop: boolean }
   | { op: "flow-finish"; branch: string; into: string[]; tag: string | null };
 

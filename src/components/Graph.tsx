@@ -33,6 +33,7 @@ type Props = {
   refMenu: (ref: RefLabel) => MenuItem[];
   wipMenu: () => MenuItem[];
   onDropRef: (source: RefLabel, target: RefLabel, at: { x: number; y: number }) => void;
+  onOpenRef: (ref: RefLabel) => void;
   /** CI status by branch name, for branches with an open pull request. */
   checks: Record<string, CheckState>;
 };
@@ -331,7 +332,7 @@ export function Graph(p: Props) {
                     {r.refs.length > 0 && (
                       <span aria-hidden className="absolute top-1/2 right-0 left-3 h-[1.5px] -translate-y-1/2" style={{ background: lane(r.color) }} />
                     )}
-                    <Pills row={r} refMenu={p.refMenu} onDropRef={p.onDropRef} checks={p.checks} />
+                    <Pills row={r} refMenu={p.refMenu} onDropRef={p.onDropRef} onOpenRef={p.onOpenRef} checks={p.checks} />
                   </div>
                   <div className="shrink-0" style={{ width: graphW }} />
                   <span className="min-w-40 flex-1 truncate pr-3">{r.summary}</span>
@@ -351,11 +352,13 @@ function Pills({
   row,
   refMenu,
   onDropRef,
+  onOpenRef,
   checks,
 }: {
   row: Row;
   refMenu: (ref: RefLabel) => MenuItem[];
   onDropRef: (source: RefLabel, target: RefLabel, at: { x: number; y: number }) => void;
+  onOpenRef: (ref: RefLabel) => void;
   checks: Record<string, CheckState>;
 }) {
   if (!row.refs.length) return null;
@@ -371,6 +374,10 @@ function Pills({
         <WithMenu
           items={() => refMenu(main)}
           draggable={main.kind !== "tag"}
+          onDoubleClick={(e: React.MouseEvent) => {
+            e.stopPropagation();
+            onOpenRef(main);
+          }}
           onDragStart={(e: React.DragEvent) => e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(main))}
           onDragOver={(e: React.DragEvent) => e.dataTransfer.types.includes(DRAG_TYPE) && e.preventDefault()}
           onDrop={(e: React.DragEvent) => {

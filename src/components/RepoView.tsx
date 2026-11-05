@@ -735,6 +735,28 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
 
   const closeDrop = useCallback(() => setDrop(null), []);
 
+  async function onOpenRef(r: RefLabel) {
+    if (r.kind === "tag") return;
+    if (r.kind === "local") return r.head || run({ op: "checkout", name: r.name });
+    const name = r.name.slice(remoteOf(r.name).length + 1);
+    const local = refs?.local.find((b) => b.name === name);
+    if (!local) return run({ op: "checkout", name }, `Checked out ${name}`);
+    const [ahead, behind] = await api.aheadBehind(root, name, r.name).catch(() => [0, 0]);
+    const checkout = async () => local.head || run({ op: "checkout", name });
+    if (!ahead && !behind) return checkout();
+    if (!ahead) return (await checkout()) && run({ op: "merge", name: r.name }, `Fast-forwarded ${name}`);
+    const lost = `${ahead} local commit${ahead === 1 ? "" : "s"}`;
+    if (
+      !(await confirm(
+        `Reset ${name} to ${r.name}?`,
+        `Drops ${lost} on ${name} that ${ahead === 1 ? "isn't" : "aren't"} on the remote${behind ? `, and brings in ${behind} from it` : ""}. Uncommitted changes are kept, and you can undo this.`,
+        "Reset",
+      ))
+    )
+      return;
+    if (await checkout()) run({ op: "reset", id: r.name, mode: "keep" }, `${name} now matches ${r.name}`);
+  }
+
   function onDropRef(src: RefLabel, target: RefLabel, at: { x: number; y: number }) {
     setDrop({ src, target, at, counts: null });
     api
@@ -1121,6 +1143,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
                     refMenu={refMenu}
                     wipMenu={wipMenu}
                     onDropRef={onDropRef}
+                    onOpenRef={onOpenRef}
                     checks={checks}
                   />
                 )
