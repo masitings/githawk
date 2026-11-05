@@ -579,6 +579,7 @@ pub fn run() {
             hosting::hosting_merge,
             hosting::hosting_checks,
             hosting::hosting_avatars,
+            hosting::hosting_add_ssh_key,
             ai::ai_run,
             keys::ssh_keys,
             keys::ssh_generate,

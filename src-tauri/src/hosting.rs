@@ -108,6 +108,10 @@ pub trait HostingProvider {
     ) -> Result<HashMap<String, String>, String> {
         Ok(HashMap::new())
     }
+    /// Adds a public key to the token owner's account for SSH authentication.
+    fn add_ssh_key(&self, _title: &str, _key: &str) -> Result<(), String> {
+        Err("This provider has no API for adding SSH keys; add it in its web settings".into())
+    }
 }
 
 /// API base for a provider; `host` is set for self-hosted servers.
@@ -328,6 +332,14 @@ impl GitHub {
 }
 
 impl HostingProvider for GitHub {
+    fn add_ssh_key(&self, title: &str, key: &str) -> Result<(), String> {
+        send(
+            self.req(client().post(format!("{}/user/keys", self.api)))
+                .json(&json!({ "title": title, "key": key })),
+        )
+        .map(drop)
+        .map_err(|e| format!("{e}. The token needs the write:public_key scope."))
+    }
     fn repos(&self) -> Result<Vec<HostRepo>, String> {
         let v = send(
             self.req(client().get(format!("{}/user/repos?per_page=100&sort=updated", self.api))),
@@ -477,6 +489,13 @@ impl GitLab {
 }
 
 impl HostingProvider for GitLab {
+    fn add_ssh_key(&self, title: &str, key: &str) -> Result<(), String> {
+        send(
+            self.req(client().post(format!("{}/user/keys", self.api)))
+                .json(&json!({ "title": title, "key": key })),
+        )
+        .map(drop)
+    }
     // ponytail: one request per author, capped at 40; batch if repos with more authors feel slow
     fn avatars(
         &self,
@@ -674,6 +693,17 @@ impl Bitbucket {
 }
 
 impl HostingProvider for Bitbucket {
+    fn add_ssh_key(&self, title: &str, key: &str) -> Result<(), String> {
+        let me = send(self.req(client().get("https://api.bitbucket.org/2.0/user")))?;
+        send(
+            self.req(client().post(format!(
+                "https://api.bitbucket.org/2.0/users/{}/ssh-keys",
+                enc(&s(&me["uuid"]))
+            )))
+            .json(&json!({ "label": title, "key": key })),
+        )
+        .map(drop)
+    }
     fn repos(&self) -> Result<Vec<HostRepo>, String> {
         let v = send(self.req(
             client().get("https://api.bitbucket.org/2.0/repositories?role=member&pagelen=100"),
@@ -831,6 +861,14 @@ impl BitbucketServer {
 }
 
 impl HostingProvider for BitbucketServer {
+    fn add_ssh_key(&self, _title: &str, key: &str) -> Result<(), String> {
+        let api = self.api.replace("/rest/api/1.0", "/rest/ssh/1.0");
+        send(
+            self.req(client().post(format!("{api}/keys")))
+                .json(&json!({ "text": key })),
+        )
+        .map(drop)
+    }
     fn repos(&self) -> Result<Vec<HostRepo>, String> {
         let v = send(self.req(client().get(format!("{}/repos?limit=100", self.api))))?;
         let clone = |r: &Value, kind: &str| {
@@ -1104,6 +1142,17 @@ pub async fn hosting_repos(key: String, account: String) -> Res<Vec<HostRepo>> {
     blocking(move || {
         let (kind, api) = resolve(&key).ok_or("Unknown hosting provider")?;
         provider(kind, api, &account)?.repos()
+    })
+    .await
+}
+
+/// `key` is a cloud provider ("github") or a self-hosted server's host; `path` is a `.pub` file in ~/.ssh.
+#[tauri::command]
+pub async fn hosting_add_ssh_key(key: String, account: String, path: String) -> Res<()> {
+    blocking(move || {
+        let (public, title) = crate::keys::public_key(&path)?;
+        let (kind, api) = resolve(&key).ok_or("Unknown hosting provider")?;
+        provider(kind, api, &account)?.add_ssh_key(&title, &public)
     })
     .await
 }

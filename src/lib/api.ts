@@ -181,6 +181,7 @@ export const api = {
   saveToken: (account: string, token: string) => invoke<void>("hosting_save_token", { account, token }),
   deleteToken: (account: string) => invoke<void>("hosting_delete_token", { account }),
   hasToken: (account: string) => invoke<boolean>("hosting_has_token", { account }),
+  addSshKey: (key: string, account: string, path: string) => invoke<void>("hosting_add_ssh_key", { key, account, path }),
   hostRepos: (key: string, account: string) => invoke<HostRepo[]>("hosting_repos", { key, account }),
   detect: (url: string) => invoke<{ provider: Provider; path: string; key: string } | null>("hosting_detect", { url }),
   setServers: (servers: Server[]) => invoke<void>("hosting_set_servers", { servers }),

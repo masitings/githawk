@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
-import { Copy, ExternalLink, KeyRound, Pencil, Plus, Search, Settings as Gear, ShieldCheck, Trash2, X } from "lucide-react";
+import { Copy, ExternalLink, KeyRound, Upload, Pencil, Plus, Search, Settings as Gear, ShieldCheck, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { api, type GpgKey, type Provider, type Server, type SshKey } from "@/lib/api";
 import { ACTIONS, DEFAULT_SHORTCUTS, account, activeProfile, comboOf, getSettings, prettyCombo, setSettings, useSettings, type Profile } from "@/lib/settings";
 import { ask, confirm } from "@/lib/prompt";
@@ -14,8 +15,8 @@ export const PROVIDERS: (Keyed & { id: Provider })[] = [
   {
     id: "github",
     name: "GitHub",
-    url: "https://github.com/settings/tokens/new?scopes=repo&description=GitHawk",
-    hint: "Personal access token with the repo scope",
+    url: "https://github.com/settings/tokens/new?scopes=repo,write:public_key&description=GitHawk",
+    hint: "Token with the repo and write:public_key scopes",
   },
   {
     id: "gitlab",
@@ -361,7 +362,7 @@ export function SettingsView({ initial = "general", onClose }: { initial?: Setti
             </>
           )}
 
-          {section === "keys" && <KeysSection profile={profile} onUse={(signingKey) => updateProfile({ signingKey })} />}
+          {section === "keys" && <KeysSection profile={profile} onUse={(signingKey) => updateProfile({ signingKey })} onConnect={() => setSection("integrations")} />}
           {section === "git" && <GitSection />}
           {section === "shortcuts" && <Shortcuts shortcuts={s.shortcuts} />}
         </div>
@@ -467,7 +468,7 @@ function TokenRow({ provider, azureOrg, text }: { provider: Keyed; azureOrg: str
             </Button>
           </>
         )}
-        <Button variant="ghost" size="icon-sm" aria-label={`Create a ${provider.name} token in the browser`} title="Create token" onClick={() => openUrl(provider.url)}>
+        <Button variant="ghost" size="icon-sm" aria-label={`Create a ${provider.name} token in the browser`} title="Create token" onClick={() => openUrl(provider.url).catch((e) => toast.error(String(e)))}>
           <ExternalLink />
         </Button>
       </div>
@@ -566,7 +567,9 @@ export function Switch({ checked, onChange, label }: { checked: boolean; onChang
   );
 }
 
-function KeysSection({ profile, onUse }: { profile: Profile; onUse: (key: string) => void }) {
+function KeysSection({ profile, onUse, onConnect }: { profile: Profile; onUse: (key: string) => void; onConnect: () => void }) {
+  const { servers } = useSettings();
+  const [targets, setTargets] = useState<{ key: string; name: string }[]>([]);
   const [ssh, setSsh] = useState<SshKey[] | null>(null);
   const [gpg, setGpg] = useState<GpgKey[] | null>(null);
   const [config, setConfig] = useState<Record<string, string>>({});
@@ -578,12 +581,30 @@ function KeysSection({ profile, onUse }: { profile: Profile; onUse: (key: string
   };
   useEffect(load, []);
 
+  useEffect(() => {
+    const all = [
+      ...PROVIDERS.filter((p) => p.id !== "azure").map((p) => ({ key: p.id, name: p.name })),
+      ...servers.filter((x) => x.host.trim()).map((x) => ({ key: x.host.trim(), name: x.host.trim() })),
+    ];
+    Promise.all(all.map((t) => api.hasToken(account(t.key)).catch(() => false))).then((has) => setTargets(all.filter((_, i) => has[i])));
+  }, [servers, profile.id]);
+
+  async function upload(key: SshKey, to: { key: string; name: string }) {
+    const id = toast.loading(`Adding the key to ${to.name}…`);
+    try {
+      await api.addSshKey(to.key, account(to.key), key.path);
+      toast.success(`SSH key added to ${to.name}`, { id });
+    } catch (e) {
+      toast.error(String(e), { id });
+    }
+  }
+
   const copy = (key: SshKey) => navigator.clipboard.writeText(key.public).then(() => toast.success("Public key copied"));
 
   async function generate() {
     const r = await ask({
       title: "Generate SSH key",
-      description: "Creates an ed25519 key pair in ~/.ssh without a passphrase. Add the public key to your hosting provider afterwards.",
+      description: "Creates an ed25519 key pair in ~/.ssh without a passphrase. Use Add to… afterwards to put the public key on your hosting provider.",
       fields: [
         { name: "name", label: "File name", value: "id_ed25519_githawk" },
         { name: "email", label: "Comment (usually your email)", value: profile.gitEmail },
@@ -594,9 +615,7 @@ function KeysSection({ profile, onUse }: { profile: Profile; onUse: (key: string
     try {
       const key = await api.sshGenerate(r.text.name.trim(), r.text.email.trim());
       await navigator.clipboard.writeText(key.public).catch(() => {});
-      toast.success("Key created and public key copied", {
-        action: { label: "Add to GitHub", onClick: () => openUrl("https://github.com/settings/ssh/new") },
-      });
+      toast.success("Key created and public key copied");
       load();
     } catch (e) {
       toast.error(String(e));
@@ -608,7 +627,7 @@ function KeysSection({ profile, onUse }: { profile: Profile; onUse: (key: string
 
   return (
     <>
-      <Title title="SSH, GPG and HTTPS" text="Keys for authenticating with remotes and signing commits. Nothing here leaves your machine." />
+      <Title title="SSH, GPG and HTTPS" text="Keys for authenticating with remotes and signing commits. Private keys never leave your machine." />
       <H3>SSH keys</H3>
       <Card>
         {ssh?.map((k) => (
@@ -623,6 +642,19 @@ function KeysSection({ profile, onUse }: { profile: Profile; onUse: (key: string
             <Button variant="outline" size="sm" onClick={() => copy(k)}>
               <Copy /> Copy public key
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+                <Upload /> Add to…
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-48">
+                {targets.map((t) => (
+                  <DropdownMenuItem key={t.key} onClick={() => upload(k, t)}>
+                    {t.name}
+                  </DropdownMenuItem>
+                ))}
+                {!targets.length && <DropdownMenuItem onClick={onConnect}>Connect a provider first…</DropdownMenuItem>}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </Row>
         ))}
         {ssh && !ssh.length && <p className="border-b px-4 py-3 text-sm text-dim">No SSH keys in ~/.ssh yet.</p>}

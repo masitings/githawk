@@ -41,6 +41,34 @@ fn read_key(path: PathBuf) -> Option<SshKey> {
     })
 }
 
+/// The public key and a title for it; only `.pub` files directly in ~/.ssh are read.
+pub(crate) fn public_key(path: &str) -> Res<(String, String)> {
+    let path = PathBuf::from(path);
+    if path.parent() != Some(ssh_dir()?.as_path()) || path.extension().is_none_or(|x| x != "pub") {
+        return Err("Not a public key in ~/.ssh".into());
+    }
+    let key = read_key(path)
+        .filter(|k| {
+            ["ssh-", "ecdsa-", "sk-"]
+                .iter()
+                .any(|p| k.kind.starts_with(p))
+        })
+        .ok_or("Couldn't read the public key")?;
+    let name = key
+        .path
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or_default()
+        .trim_end_matches(".pub")
+        .to_owned();
+    let title = if key.comment.is_empty() {
+        format!("{name} (GitHawk)")
+    } else {
+        format!("{} · {name} (GitHawk)", key.comment)
+    };
+    Ok((key.public, title))
+}
+
 #[tauri::command]
 pub async fn ssh_keys() -> Res<Vec<SshKey>> {
     tauri::async_runtime::spawn_blocking(|| {
@@ -209,7 +237,15 @@ pub async fn git_config_set(key: String, value: String) -> Res<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::valid;
+    use super::{public_key, valid};
+
+    #[test]
+    fn only_reads_public_keys_in_ssh_dir() {
+        let home = std::env::var("HOME").unwrap();
+        assert!(public_key("/etc/hosts").is_err());
+        assert!(public_key(&format!("{home}/.ssh/id_ed25519")).is_err());
+        assert!(public_key(&format!("{home}/.ssh/../.ssh/x.pub")).is_err());
+    }
 
     #[test]
     fn config_values() {

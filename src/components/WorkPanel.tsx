@@ -213,6 +213,7 @@ export function WorkPanel({ root, status, open, onOpen, onConflict, fileMenu, ru
           aria-label="Commit description"
           placeholder="Description"
           rows={3}
+          className="max-h-40"
           value={description}
           onChange={(e) => setDescription(e.currentTarget.value)}
         />
