@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::RwLock;
 
 use reqwest::blocking::{Client, RequestBuilder};
@@ -98,6 +99,10 @@ pub trait HostingProvider {
     /// Combined CI status of a commit: "success", "failure" or "pending"; None when it has no checks.
     fn checks(&self, _remote: &RemoteRef, _sha: &str) -> Result<Option<String>, String> {
         Ok(None)
+    }
+    /// Profile photo URLs keyed by commit email, for people who committed recently.
+    fn avatars(&self, _remote: &RemoteRef) -> Result<HashMap<String, String>, String> {
+        Ok(HashMap::new())
     }
 }
 
@@ -305,6 +310,35 @@ impl HostingProvider for GitHub {
     fn merge(&self, remote: &RemoteRef, number: u64, method: &str) -> Result<(), String> {
         let url = format!("{}/repos/{}/pulls/{number}/merge", self.api, remote.path);
         send(self.req(client().put(url).json(&json!({"merge_method": method})))).map(drop)
+    }
+
+    // ponytail: newest 300 commits; older authors fall back to the placeholder avatar
+    fn avatars(&self, remote: &RemoteRef) -> Result<HashMap<String, String>, String> {
+        let mut map = HashMap::new();
+        for page in 1..=3 {
+            let url = format!(
+                "{}/repos/{}/commits?per_page=100&page={page}",
+                self.api, remote.path
+            );
+            let v = send(self.req(client().get(url)))?;
+            let list = v.as_array().cloned().unwrap_or_default();
+            for c in &list {
+                for (who, git) in [("author", "author"), ("committer", "committer")] {
+                    let (Some(email), Some(avatar)) = (
+                        c["commit"][git]["email"].as_str(),
+                        c[who]["avatar_url"].as_str(),
+                    ) else {
+                        continue;
+                    };
+                    map.entry(email.to_lowercase())
+                        .or_insert_with(|| avatar.to_owned());
+                }
+            }
+            if list.len() < 100 {
+                break;
+            }
+        }
+        Ok(map)
     }
 
     fn checks(&self, remote: &RemoteRef, sha: &str) -> Result<Option<String>, String> {
@@ -1056,13 +1090,18 @@ pub async fn hosting_merge(account: String, url: String, number: u64, method: St
     blocking(move || with_remote(&url, &account, |p, r| p.merge(r, number, &method))).await
 }
 
+#[tauri::command]
+pub async fn hosting_avatars(account: String, url: String) -> Res<HashMap<String, String>> {
+    blocking(move || with_remote(&url, &account, |p, r| p.avatars(r))).await
+}
+
 /// CI status for each commit; commits without checks are left out.
 #[tauri::command]
 pub async fn hosting_checks(
     account: String,
     url: String,
     shas: Vec<String>,
-) -> Res<std::collections::HashMap<String, String>> {
+) -> Res<HashMap<String, String>> {
     blocking(move || {
         with_remote(&url, &account, |p, r| {
             Ok(shas

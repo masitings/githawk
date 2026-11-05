@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { compose, parseConflicts } from "./conflicts.ts";
+import { avatarUrl } from "./avatars.ts";
 
 const text = "a\n<<<<<<< HEAD\nours\n||||||| base\norig\n=======\ntheirs\n>>>>>>> feat\nz\n";
 const segs = parseConflicts(text);
@@ -43,3 +44,9 @@ assert.deepEqual(files[0].hunks[0].lines, [
 ]);
 assert.equal(files[1].hunks[0].lines[0].old, 1);
 console.log("unified ok");
+
+assert.equal(avatarUrl("12345+octo@users.noreply.github.com", {}), "https://avatars.githubusercontent.com/u/12345?s=64");
+assert.equal(avatarUrl("octo@users.noreply.github.com", {}), "https://github.com/octo.png?size=64");
+assert.equal(avatarUrl("Maya@Example.com", { "maya@example.com": "https://a/u/1?v=4" }), "https://a/u/1?v=4&s=64");
+assert.equal(avatarUrl("nobody@example.com", {}), undefined);
+console.log("avatars ok");

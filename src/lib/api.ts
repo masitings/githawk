@@ -7,6 +7,7 @@ export type Row = {
   parents: string[];
   summary: string;
   author: string;
+  email: string;
   time: number;
   refs: RefLabel[];
   head: boolean;
@@ -183,6 +184,7 @@ export const api = {
   prDiff: (account: string, url: string, number: number) => invoke<string>("hosting_pr_diff", { account, url, number }),
   review: (account: string, url: string, number: number, review: Review) => invoke<void>("hosting_review", { account, url, number, review }),
   mergePr: (account: string, url: string, number: number, method: MergeMethod) => invoke<void>("hosting_merge", { account, url, number, method }),
+  avatars: (account: string, url: string) => invoke<Record<string, string>>("hosting_avatars", { account, url }),
   checks: (account: string, url: string, shas: string[]) => invoke<Record<string, CheckState>>("hosting_checks", { account, url, shas }),
   prs: (account: string, url: string) => invoke<Pr[]>("hosting_prs", { account, url }),
   createPr: (account: string, url: string, pr: { title: string; body: string; head: string; base: string }) =>

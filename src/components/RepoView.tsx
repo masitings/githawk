@@ -115,6 +115,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
   const [prs, setPrs] = useState<{ list: Pr[] | null; error: string } | null>(null);
   const [hostAccount, setHostAccount] = useState("");
   const [checks, setChecks] = useState<Record<string, CheckState>>({});
+  const [avatars, setAvatars] = useState<Record<string, string> | null>(null);
   const [drop, setDrop] = useState<{ src: RefLabel; target: RefLabel; at: { x: number; y: number }; counts: [number, number] | null } | null>(null);
   const [sidebar, setSidebar] = useState(() => {
     try {
@@ -234,6 +235,20 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
   useEffect(() => {
     loadPrs();
   }, [loadPrs, settings.active]);
+
+  useEffect(() => {
+    setAvatars(null);
+    if (!originUrl || !hostAccount) return;
+    let live = true;
+    api
+      .detect(originUrl)
+      .then((d) => (d?.provider === "github" ? api.avatars(hostAccount, originUrl) : null))
+      .then((map) => live && map && setAvatars(map))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [hostAccount, originUrl]);
 
   const remoteName = refs && (refs.urls.origin ? "origin" : Object.keys(refs.urls)[0]);
   const heads = (prs?.list ?? [])
@@ -1145,6 +1160,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
                     onDropRef={onDropRef}
                     onOpenRef={onOpenRef}
                     checks={checks}
+                    avatars={avatars}
                   />
                 )
               ) : (

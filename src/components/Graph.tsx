@@ -3,6 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check, CircleCheck, CircleDot, CircleX, Cloud, Laptop, Tag } from "lucide-react";
 import { api, date, lane, type CheckState, type Opened, type RefLabel, type Row } from "@/lib/api";
 import { WithMenu, type MenuItem } from "@/components/Menu";
+import { avatarImage, avatarUrl } from "@/lib/avatars";
 
 const ROW = 28;
 const LANE = 18;
@@ -36,6 +37,8 @@ type Props = {
   onOpenRef: (ref: RefLabel) => void;
   /** CI status by branch name, for branches with an open pull request. */
   checks: Record<string, CheckState>;
+  /** Photo URLs by lowercased commit email; null when the remote isn't on GitHub. */
+  avatars: Record<string, string> | null;
 };
 
 const CHECK_ICON = { success: CircleCheck, failure: CircleX, pending: CircleDot };
@@ -220,6 +223,17 @@ export function Graph(p: Props) {
       ctx.strokeStyle = color(r.color);
       ctx.lineWidth = 2;
       ctx.stroke();
+      const url = p.avatars && avatarUrl(r.email, p.avatars);
+      const photo = url && avatarImage(url, rerender);
+      if (photo) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, 8.5, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(photo, cx - 8.5, cy - 8.5, 17, 17);
+        ctx.restore();
+        continue;
+      }
       ctx.fillStyle = "rgba(255, 255, 255, 0.78)";
       ctx.beginPath();
       ctx.arc(cx, cy - 1.6, 2.9, 0, Math.PI * 2);

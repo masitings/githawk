@@ -26,6 +26,7 @@ pub struct Row {
     pub parents: Vec<String>,
     pub summary: String,
     pub author: String,
+    pub email: String,
     /// Unix seconds, UTC.
     pub time: i64,
     pub refs: Vec<RefLabel>,
@@ -143,11 +144,13 @@ pub fn graph_filtered(
             colors.pop();
         }
 
+        let author = commit.author();
         rows.push(Row {
             id: oid.to_string(),
             parents: parents.iter().map(Oid::to_string).collect(),
             summary: commit.summary().unwrap_or_default().to_owned(),
-            author: commit.author().name().unwrap_or_default().to_owned(),
+            author: author.name().unwrap_or_default().to_owned(),
+            email: author.email().unwrap_or_default().to_owned(),
             time: commit.time().seconds(),
             refs: refs.get(&oid).cloned().unwrap_or_default(),
             head: Some(oid) == head,

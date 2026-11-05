@@ -578,6 +578,7 @@ pub fn run() {
             hosting::hosting_review,
             hosting::hosting_merge,
             hosting::hosting_checks,
+            hosting::hosting_avatars,
             ai::ai_run,
             keys::ssh_keys,
             keys::ssh_generate,
