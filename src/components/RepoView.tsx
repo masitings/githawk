@@ -1217,6 +1217,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
               onOpen={(target, path) => setCenter({ kind: "diff", target, path })}
               onSelect={select}
               fileMenu={fileMenu}
+              avatars={avatars}
             />
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">

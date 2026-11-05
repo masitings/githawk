@@ -121,6 +121,9 @@ pub struct FileDiff {
     pub old_path: Option<String>,
     pub status: char,
     pub binary: bool,
+    /// Lines added and removed; only filled for commits when listing files.
+    pub added: usize,
+    pub deleted: usize,
     pub hunks: Vec<Hunk>,
 }
 
@@ -185,8 +188,17 @@ pub fn diff(path: &str, target: &Target, file: Option<&str>) -> Result<Vec<FileD
             old_path,
             status,
             binary: d.flags().is_binary(),
+            added: 0,
+            deleted: 0,
             hunks: Vec::new(),
         };
+        if file.is_none()
+            && matches!(target, Target::Commit { .. })
+            && let Some(patch) = Patch::from_diff(&diff, i)?
+        {
+            let (_, added, deleted) = patch.line_stats()?;
+            (f.added, f.deleted) = (added, deleted);
+        }
         if file.is_some()
             && let Some(patch) = Patch::from_diff(&diff, i)?
         {

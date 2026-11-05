@@ -30,6 +30,8 @@ export type FileDiff = {
   old_path: string | null;
   status: string;
   binary: boolean;
+  added: number;
+  deleted: number;
   hunks: Hunk[];
 };
 export type CommitInfo = {
