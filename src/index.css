@@ -1,0 +1,172 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/ibm-plex-sans";
+@import "@fontsource-variable/jetbrains-mono";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Dense desktop scale from the GitHawk design: body 13px, meta 11.5px. */
+@theme {
+    --text-xs: 0.71875rem;
+    --text-xs--line-height: 1rem;
+    --text-sm: 0.8125rem;
+    --text-sm--line-height: 1.25rem;
+}
+
+@theme inline {
+    --font-heading: var(--font-sans);
+    --font-sans: 'IBM Plex Sans Variable', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+    --color-panel: var(--panel);
+    --color-panel-2: var(--panel-2);
+    --color-raised: var(--raised);
+    --color-dim: var(--dim);
+    --color-add: var(--add-ink);
+    --color-del: var(--del-ink);
+    --color-scrim: var(--scrim);
+    --color-sidebar-ring: var(--ring);
+    --color-sidebar-border: var(--border);
+    --color-sidebar-accent-foreground: var(--foreground);
+    --color-sidebar-accent: var(--raised);
+    --color-sidebar-primary-foreground: var(--primary-foreground);
+    --color-sidebar-primary: var(--primary);
+    --color-sidebar-foreground: var(--foreground);
+    --color-sidebar: var(--background);
+    --color-chart-5: var(--lane-4);
+    --color-chart-4: var(--lane-3);
+    --color-chart-3: var(--lane-2);
+    --color-chart-2: var(--lane-1);
+    --color-chart-1: var(--lane-0);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --shadow-overlay: var(--overlay-shadow);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+    --radius: 0.5rem;
+    --background: #F4F5F7;
+    --panel: #FFFFFF;
+    --panel-2: #F7F8FA;
+    --raised: #E9ECF0;
+    --border: #D8DDE3;
+    --foreground: #15181C;
+    --muted-foreground: #4D5763;
+    --dim: #5C6672;
+    --card: var(--panel);
+    --card-foreground: var(--foreground);
+    --popover: var(--panel);
+    --popover-foreground: var(--foreground);
+    --primary: #F4A62A;
+    --primary-foreground: #1B1203;
+    --secondary: var(--raised);
+    --secondary-foreground: var(--foreground);
+    --muted: var(--panel-2);
+    --accent: var(--raised);
+    --accent-foreground: var(--foreground);
+    --destructive: #A3242F;
+    --input: var(--border);
+    /* amber fails 3:1 on white, so the light ring uses lane 0's darker amber */
+    --ring: #A35F00;
+    --scrim: rgba(20, 24, 30, 0.40);
+    --overlay-shadow: 0 24px 64px rgba(20, 24, 30, 0.22);
+    --add-ink: #1E6B3A;
+    --del-ink: #A3242F;
+    --diff-add: rgba(46, 160, 90, 0.10);
+    --diff-del: rgba(210, 60, 70, 0.09);
+    --diff-add-strong: rgba(46, 160, 90, 0.24);
+    --diff-del-strong: rgba(210, 60, 70, 0.22);
+    --syn-keyword: #6247CC;
+    --syn-string: #1E6B3A;
+    --syn-comment: #5C6672;
+    --syn-number: #A35F00;
+    --syn-title: #0A6EA8;
+    --syn-type: #0B7575;
+    --lane-0: #A35F00;
+    --lane-1: #0A6EA8;
+    --lane-2: #6247CC;
+    --lane-3: #3F7A0C;
+    --lane-4: #C02E49;
+    --lane-5: #0B7575;
+    --lane-6: #B04A14;
+    --lane-7: #66650A;
+}
+
+.dark {
+    --background: #0F1113;
+    --panel: #15181C;
+    --panel-2: #1B1F24;
+    --raised: #232830;
+    --border: #2B313A;
+    --foreground: #E8EBEF;
+    --muted-foreground: #A3ACB7;
+    --dim: #828C98;
+    --destructive: #FF9C9C;
+    --ring: #F4A62A;
+    --scrim: rgba(5, 6, 8, 0.62);
+    --overlay-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+    --add-ink: #86E3A6;
+    --del-ink: #FF9C9C;
+    --diff-add: rgba(95, 208, 138, 0.12);
+    --diff-del: rgba(242, 106, 106, 0.13);
+    --diff-add-strong: rgba(95, 208, 138, 0.26);
+    --diff-del-strong: rgba(242, 106, 106, 0.26);
+    --syn-keyword: #A48BF5;
+    --syn-string: #86E3A6;
+    --syn-comment: #828C98;
+    --syn-number: #F4A62A;
+    --syn-title: #4CB6F0;
+    --syn-type: #5CD0D0;
+    --lane-0: #F4A62A;
+    --lane-1: #4CB6F0;
+    --lane-2: #A48BF5;
+    --lane-3: #8FD14F;
+    --lane-4: #F27A8A;
+    --lane-5: #5CD0D0;
+    --lane-6: #F2925A;
+    --lane-7: #D2CB5E;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-sm text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+  code, kbd, pre, samp {
+    @apply font-mono;
+  }
+}
+.hljs-keyword, .hljs-selector-tag, .hljs-meta .hljs-keyword { color: var(--syn-keyword); }
+.hljs-string, .hljs-regexp, .hljs-addition { color: var(--syn-string); }
+.hljs-comment, .hljs-quote { color: var(--syn-comment); font-style: italic; }
+.hljs-number, .hljs-literal, .hljs-symbol { color: var(--syn-number); }
+.hljs-title, .hljs-section, .hljs-function .hljs-title { color: var(--syn-title); }
+.hljs-type, .hljs-built_in, .hljs-attr, .hljs-attribute, .hljs-variable.language_ { color: var(--syn-type); }
