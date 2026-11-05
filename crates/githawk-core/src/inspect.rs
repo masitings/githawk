@@ -295,6 +295,18 @@ pub fn last_fetch(root: &str) -> Option<i64> {
     )
 }
 
+/// How many commits `a` has that `b` doesn't (ahead), and the reverse (behind).
+pub fn ahead_behind(root: &str, a: &str, b: &str) -> Result<(usize, usize), String> {
+    let repo = Repository::open(root).map_err(e)?;
+    let oid = |r: &str| {
+        repo.revparse_single(r)
+            .and_then(|o| o.peel_to_commit())
+            .map(|c| c.id())
+            .map_err(e)
+    };
+    repo.graph_ahead_behind(oid(a)?, oid(b)?).map_err(e)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -160,6 +160,7 @@ export const api = {
   files: (root: string) => invoke<string[]>("files", { root }),
   extras: (root: string) => invoke<Extras>("extras", { root }),
   commandLog: (root: string) => invoke<Logged[]>("command_log", { root }),
+  aheadBehind: (root: string, a: string, b: string) => invoke<[number, number]>("ahead_behind", { root, a, b }),
   gitVersion: () => invoke<string>("git_version"),
   sshKeys: () => invoke<SshKey[]>("ssh_keys"),
   sshGenerate: (name: string, email: string) => invoke<SshKey>("ssh_generate", { name, email }),

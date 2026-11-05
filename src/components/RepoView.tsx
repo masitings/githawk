@@ -10,6 +10,9 @@ import {
   ArchiveRestore,
   ChevronDown,
   GitBranch,
+  GitMerge,
+  GitPullRequestArrow,
+  ListOrdered,
   GitBranchPlus,
   GitPullRequestCreate,
   History,
@@ -54,6 +57,7 @@ import { CommitPanel } from "@/components/CommitPanel";
 import { ConflictView } from "@/components/ConflictView";
 import { FileView } from "@/components/FileView";
 import { StatusBar } from "@/components/StatusBar";
+import { DropMenu, type DropItem } from "@/components/DropMenu";
 import { ReflogView } from "@/components/ReflogView";
 import { RebaseDialog } from "@/components/RebaseDialog";
 import { PrView } from "@/components/PrView";
@@ -111,6 +115,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
   const [prs, setPrs] = useState<{ list: Pr[] | null; error: string } | null>(null);
   const [hostAccount, setHostAccount] = useState("");
   const [checks, setChecks] = useState<Record<string, CheckState>>({});
+  const [drop, setDrop] = useState<{ src: RefLabel; target: RefLabel; at: { x: number; y: number }; counts: [number, number] | null } | null>(null);
   const [sidebar, setSidebar] = useState(() => {
     try {
       return localStorage.getItem("githawk.sidebar") !== "hidden";
@@ -426,22 +431,23 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
     }
   }
 
-  async function createPr() {
-    if (!originUrl || !current) return toast.error("Check out a branch with a remote first");
+  async function createPr(from?: string, into?: string) {
+    const branch = from ?? current;
+    if (!originUrl || !branch) return toast.error("Check out a branch with a remote first");
     const d = await api.detect(originUrl);
     if (!d) return toast.error("The remote isn't on GitHub, GitLab, Bitbucket, Azure DevOps or a server added in Settings");
-    const b = refs?.local.find((x) => x.name === current);
+    const b = refs?.local.find((x) => x.name === branch);
     if (!b?.upstream) {
-      if (!(await confirm(`${current} isn't on the remote yet`, "Push it first, then create the pull request?", "Push"))) return;
-      await push(current);
+      if (!(await confirm(`${branch} isn't on the remote yet`, "Push it first, then create the pull request?", "Push"))) return;
+      await push(branch);
     }
-    const base = ["main", "master", "develop"].find((n) => refs?.remote.some((r) => r.name === `${remoteOf(b?.upstream ?? "origin/")}/${n}`)) ?? "main";
-    const head = await api.commit(root, "HEAD").catch(() => null);
+    const base = into ?? ["main", "master", "develop"].find((n) => refs?.remote.some((r) => r.name === `${remoteOf(b?.upstream ?? "origin/")}/${n}`)) ?? "main";
+    const head = await api.commit(root, branch).catch(() => null);
     const r = await ask({
       title: `Create pull request on ${PROVIDER_NAME[d.provider]}`,
-      description: `${current} → base branch`,
+      description: `${branch} → base branch`,
       fields: [
-        { name: "title", label: "Title", value: head?.message.split("\n")[0] ?? current },
+        { name: "title", label: "Title", value: head?.message.split("\n")[0] ?? branch },
         { name: "body", label: "Description", optional: true },
         { name: "base", label: "Base branch", value: base },
       ],
@@ -452,7 +458,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
       const url = await api.createPr(account(d.key), originUrl, {
         title: r.text.title.trim(),
         body: r.text.body,
-        head: current,
+        head: branch,
         base: r.text.base.trim(),
       });
       toast.success("Pull request created", { action: { label: "Open", onClick: () => openUrl(url) } });
@@ -727,31 +733,60 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
     },
   ];
 
-  async function onDropRef(src: RefLabel, target: RefLabel) {
-    const choices: [string, () => void][] = [];
-    if (target.head) choices.push([`Merge ${src.name} into ${target.name}`, () => run({ op: "merge", name: src.name })]);
-    if (src.head) {
-      choices.push([`Rebase ${src.name} onto ${target.name}`, () => run({ op: "rebase", onto: target.name })]);
-      choices.push([`Merge ${target.name} into ${src.name}`, () => run({ op: "merge", name: target.name })]);
-    }
-    if (src.kind === "local" && target.kind === "remote") {
-      const remote = remoteOf(target.name);
-      const rb = target.name.slice(remote.length + 1);
-      choices.push([
-        `Push ${src.name} to ${target.name}`,
-        () => run({ op: "push", remote, branch: rb === src.name ? src.name : `${src.name}:${rb}`, force: false, setUpstream: false }),
-      ]);
-    }
-    if (!target.head && !src.head && target.kind === "local") {
-      choices.push([
-        `Checkout ${target.name} and merge ${src.name}`,
-        async () => (await run({ op: "checkout", name: target.name })) && run({ op: "merge", name: src.name }),
-      ]);
-    }
-    if (!choices.length) return;
-    const r = await ask({ title: `${src.name} → ${target.name}`, choices: choices.map((c) => c[0]) });
-    choices.find((c) => c[0] === r?.choice)?.[1]();
+  const closeDrop = useCallback(() => setDrop(null), []);
+
+  function onDropRef(src: RefLabel, target: RefLabel, at: { x: number; y: number }) {
+    setDrop({ src, target, at, counts: null });
+    api
+      .aheadBehind(root, src.name, target.name)
+      .then((counts) => setDrop((d) => (d && d.src === src ? { ...d, counts } : d)))
+      .catch(() => {});
   }
+
+  const dropItems = (src: RefLabel, target: RefLabel): DropItem[] => {
+    const b = (name: string) => <b className="font-semibold">{name}</b>;
+    const branchOf = (r: RefLabel) => (r.kind === "remote" ? r.name.slice(remoteOf(r.name).length + 1) : r.name);
+    const checkout = async (name: string) => current === name || run({ op: "checkout", name });
+    const tip = (name: string) => [...(refs?.local ?? []), ...(refs?.remote ?? [])].find((x) => x.name === name)?.tip;
+    const items: DropItem[] = [];
+    if (target.kind === "local") {
+      items.push({
+        icon: GitMerge,
+        label: <>Merge {b(src.name)} into {b(target.name)}</>,
+        run: async () => (await checkout(target.name)) && run({ op: "merge", name: src.name }, `Merged ${src.name} into ${target.name}`),
+      });
+    }
+    if (src.kind === "local") {
+      items.push(
+        {
+          icon: GitPullRequestArrow,
+          label: <>Rebase {b(src.name)} onto {b(target.name)}</>,
+          run: async () => (await checkout(src.name)) && run({ op: "rebase", onto: target.name }, `Rebased ${src.name} onto ${target.name}`),
+        },
+        {
+          icon: ListOrdered,
+          label: <>Interactive rebase onto {b(target.name)}…</>,
+          run: async () => {
+            const base = tip(target.name);
+            if (base && (await checkout(src.name))) setRebaseBase({ base });
+          },
+        },
+      );
+      const remote = target.kind === "remote" ? remoteOf(target.name) : remoteName;
+      if (remote) {
+        const dest = target.kind === "remote" ? branchOf(target) : src.name;
+        items.push({
+          icon: ArrowUpFromLine,
+          label: target.kind === "remote" ? <>Push {b(src.name)} to {b(target.name)}</> : <>Push {b(src.name)} to {b(remote)}</>,
+          run: () => run({ op: "push", remote, branch: dest === src.name ? src.name : `${src.name}:${dest}`, force: false, setUpstream: false }, "Pushed"),
+        });
+      }
+    }
+    if (prs && branchOf(src) !== branchOf(target)) {
+      items.push({ icon: GitPullRequestCreate, label: <>Open pull request into {b(branchOf(target))}…</>, run: () => createPr(branchOf(src), branchOf(target)) });
+    }
+    return items;
+  };
 
   async function onSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -835,7 +870,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
       .filter(([id]) => id !== "palette")
       .map(([id, label]) => ({ id: `a:${id}`, label, group: "Action", shortcut: id, run: () => actions[id]() }));
     items.push(
-      { id: "a:pr", label: "Create pull request…", group: "Action", run: createPr },
+      { id: "a:pr", label: "Create pull request…", group: "Action", run: () => createPr() },
       { id: "a:worktree", label: "Add worktree…", group: "Action", run: () => addWorktree() },
       ...(flow
         ? (["feature", "release", "hotfix"] as const).map((k) => ({ id: `a:flow-${k}`, label: `Gitflow: start ${k}…`, group: "Action", run: () => flowStart(k) }))
@@ -944,7 +979,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
           </DropdownMenuContent>
         </DropdownMenu>
         {prs && (
-          <Button variant="ghost" size="tool" onClick={createPr}>
+          <Button variant="ghost" size="tool" onClick={() => createPr()}>
             <GitPullRequestCreate /> PR
           </Button>
         )}
@@ -1010,7 +1045,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
             onClearSolo={() => setFilter({ ...view, solo: null })}
             onJump={select}
             onCheckout={(name) => run({ op: "checkout", name })}
-            onCreatePr={createPr}
+            onCreatePr={() => createPr()}
             refMenu={refMenu}
             stashMenu={stashMenu}
             worktreeMenu={worktreeMenu}
@@ -1151,6 +1186,20 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
         </aside>
       </div>
       <StatusBar root={root} fetched={extras?.fetched} urls={refs?.urls} />
+      {drop && (
+        <DropMenu
+          at={drop.at}
+          title={
+            <>
+              Dropped on {drop.target.name}
+              {drop.counts && ` · ${drop.counts[0]} commit${drop.counts[0] === 1 ? "" : "s"} ahead, ${drop.counts[1]} behind`}
+            </>
+          }
+          items={dropItems(drop.src, drop.target)}
+          undoKey={prettyCombo(settings.shortcuts.undo ?? "mod+z")}
+          onClose={closeDrop}
+        />
+      )}
       {rebaseBase && (
         <RebaseDialog
           root={root}

@@ -32,7 +32,7 @@ type Props = {
   rowMenu: (row: Row) => MenuItem[];
   refMenu: (ref: RefLabel) => MenuItem[];
   wipMenu: () => MenuItem[];
-  onDropRef: (source: RefLabel, target: RefLabel) => void;
+  onDropRef: (source: RefLabel, target: RefLabel, at: { x: number; y: number }) => void;
   /** CI status by branch name, for branches with an open pull request. */
   checks: Record<string, CheckState>;
 };
@@ -355,7 +355,7 @@ function Pills({
 }: {
   row: Row;
   refMenu: (ref: RefLabel) => MenuItem[];
-  onDropRef: (source: RefLabel, target: RefLabel) => void;
+  onDropRef: (source: RefLabel, target: RefLabel, at: { x: number; y: number }) => void;
   checks: Record<string, CheckState>;
 }) {
   if (!row.refs.length) return null;
@@ -376,7 +376,7 @@ function Pills({
           onDrop={(e: React.DragEvent) => {
             e.preventDefault();
             const src = JSON.parse(e.dataTransfer.getData(DRAG_TYPE)) as RefLabel;
-            if (src.name !== main.name) onDropRef(src, main);
+            if (src.name !== main.name) onDropRef(src, main, { x: e.clientX, y: e.clientY });
           }}
           title={row.refs.map((r) => r.name).join("\n")}
           className="flex h-5 max-w-full cursor-grab items-center gap-1 rounded-full border px-2 text-xs font-semibold"

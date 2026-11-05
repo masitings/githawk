@@ -304,6 +304,11 @@ async fn extras(root: String) -> Res<Extras> {
 }
 
 #[tauri::command]
+async fn ahead_behind(root: String, a: String, b: String) -> Res<(usize, usize)> {
+    blocking(move || inspect::ahead_behind(&root, &a, &b)).await
+}
+
+#[tauri::command]
 fn command_log(root: String) -> Vec<ops::Logged> {
     ops::command_log(Path::new(&root))
 }
@@ -553,6 +558,7 @@ pub fn run() {
             files,
             extras,
             command_log,
+            ahead_behind,
             git_version,
             signature,
             set_identity,
