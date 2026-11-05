@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Archive, Check, ChevronRight, Cloud, Eye, EyeOff, Folder, FolderTree, GitPullRequest, Laptop, Package, Plus, Search, Tag, X } from "lucide-react";
+import { Archive, Check, ChevronRight, Cloud, Eye, EyeOff, Folder, FolderTree, GitPullRequest, Laptop, Package, Plus, Search, Server, Tag, X, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CheckState, Extras, Pr, RefLabel, Refs, Stash, Submodule, Worktree } from "@/lib/api";
 import { CheckBadge } from "@/components/Graph";
@@ -63,6 +63,8 @@ export function Sidebar(p: Props) {
     extra?: ReactNode;
     onDouble?: () => void;
     dim?: boolean;
+    active?: boolean;
+    sub?: ReactNode;
   }) => (
     <li key={o.key}>
       <WithMenu
@@ -72,16 +74,21 @@ export function Sidebar(p: Props) {
         onClick={o.onClick}
         onDoubleClick={o.onDouble}
         onKeyDown={(e: React.KeyboardEvent) => e.key === "Enter" && o.onClick()}
-        className={`group flex h-7 items-center gap-2 rounded-md px-2 text-sm hover:bg-raised ${o.dim ? "opacity-50" : ""}`}
+        className={`group flex items-center gap-2 rounded-md px-2 text-sm ${o.sub ? "py-1" : "h-7"} ${
+          o.active ? "bg-primary/12 font-semibold text-foreground hover:bg-primary/18" : "hover:bg-raised"
+        } ${o.dim ? "opacity-50" : ""}`}
       >
         {o.icon}
-        <span className="min-w-0 flex-1 truncate">{o.label}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate">{o.label}</span>
+          {o.sub && <span className="block truncate text-xs font-normal text-dim">{o.sub}</span>}
+        </span>
         {o.extra}
       </WithMenu>
     </li>
   );
 
-  const folders = <T,>(list: T[], name: (x: T) => string, render: (x: T, label: string) => ReactNode, key: string) => {
+  const folders = <T,>(list: T[], name: (x: T) => string, render: (x: T, label: string) => ReactNode, key: string, current?: (x: T) => boolean) => {
     const groups = new Map<string, T[]>();
     const nodes: [boolean, string, ReactNode][] = [];
     for (const x of list) {
@@ -98,7 +105,7 @@ export function Sidebar(p: Props) {
           render(items[0], name(items[0]))
         ) : (
           <li key={`${key}/${g}/`}>
-            <details open={!!q} className="group/folder">
+            <details open={!!q || items.some((x) => current?.(x))} className="group/folder">
               <summary className="flex h-7 cursor-pointer list-none items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground hover:bg-raised">
                 <ChevronRight className="size-3 shrink-0 transition-transform group-open/folder:rotate-90" aria-hidden />
                 <Folder className="size-3.5 shrink-0" aria-hidden />
@@ -140,7 +147,7 @@ export function Sidebar(p: Props) {
         {p.extras?.lfs && <span className="w-fit rounded border px-1.5 text-xs text-muted-foreground">Git LFS</span>}
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto px-2 pb-3">
-        <Section title="Local" count={refs.local.length}>
+        <Section title="Local" icon={Laptop} count={refs.local.length} empty="No local branches">
           {folders(
             refs.local.filter((b) => match(b.name)),
             (b) => b.name,
@@ -148,7 +155,8 @@ export function Sidebar(p: Props) {
               item({
                 key: b.name,
                 label,
-                icon: b.head ? <Check className="size-3.5 shrink-0" aria-label="current" /> : icon(Laptop),
+                icon: b.head ? <Check className="size-3.5 shrink-0 text-primary" aria-label="current" /> : icon(Laptop),
+                active: b.head,
                 menu: () => p.refMenu({ name: b.name, kind: "local", head: b.head }),
                 onClick: () => p.onJump(b.tip),
                 onDouble: () => !b.head && p.onCheckout(b.name),
@@ -156,8 +164,9 @@ export function Sidebar(p: Props) {
                 extra: (
                   <>
                     {(b.ahead > 0 || b.behind > 0) && (
-                      <span className="shrink-0 text-xs text-muted-foreground" title={`${b.ahead} ahead, ${b.behind} behind ${b.upstream}`}>
-                        {b.ahead > 0 && `↑${b.ahead}`} {b.behind > 0 && `↓${b.behind}`}
+                      <span className="flex shrink-0 gap-0.5 font-mono text-[10.5px] text-muted-foreground" title={`${b.ahead} ahead, ${b.behind} behind ${b.upstream}`}>
+                        {b.ahead > 0 && <span className="rounded bg-raised px-1">↑{b.ahead}</span>}
+                        {b.behind > 0 && <span className="rounded bg-raised px-1">↓{b.behind}</span>}
                       </span>
                     )}
                     {eye(b.name)}
@@ -165,14 +174,20 @@ export function Sidebar(p: Props) {
                 ),
               }),
             "local",
+            (b) => b.head,
           )}
         </Section>
-        <Section title="Remote" count={refs.remote.length}>
+        <Section title="Remote" icon={Cloud} count={refs.remote.length} empty="No remotes. Add one to push and pull.">
           {[...byRemote].map(([remote, list]) => (
             <li key={remote}>
-              <details open>
-                <summary className="flex h-7 cursor-pointer items-center px-2 text-sm text-muted-foreground">{remote}</summary>
-                <ul className="pl-3">
+              <details open className="group/remote">
+                <summary className="flex h-7 cursor-pointer list-none items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground hover:bg-raised">
+                  <ChevronRight className="size-3 shrink-0 transition-transform group-open/remote:rotate-90" aria-hidden />
+                  <Server className="size-3.5 shrink-0" aria-hidden />
+                  <span className="min-w-0 flex-1 truncate">{remote}</span>
+                  <span className="text-xs">{list.length}</span>
+                </summary>
+                <ul className="pl-4">
                   {folders(
                     list,
                     (r) => r.name.slice(remote.length + 1),
@@ -197,20 +212,23 @@ export function Sidebar(p: Props) {
         {p.prs && (
           <Section
             title="Pull requests"
+            icon={GitPullRequest}
             count={p.prs.list?.length ?? 0}
+            empty={p.prs.error ? undefined : "No open pull requests"}
             action={
               <Button size="icon-xs" variant="ghost" aria-label="Create pull request" onClick={p.onCreatePr}>
                 <Plus />
               </Button>
             }
           >
-            {p.prs.error && <li className="px-2 text-xs text-muted-foreground">{p.prs.error}</li>}
+            {p.prs.error && <li className="px-2 pb-1.5 text-xs leading-[17px] text-dim">{p.prs.error}</li>}
             {p.prs.list?.filter((pr) => match(pr.title) || match(pr.head)).map((pr) =>
               item({
                 key: `pr${pr.number}`,
-                label: (
+                label: <span title={pr.title}>{pr.title}</span>,
+                sub: (
                   <span title={`${pr.head} → ${pr.base} by ${pr.author}`}>
-                    <span className="text-muted-foreground">#{pr.number}</span> {pr.title}
+                    #{pr.number} · {pr.author} · {pr.head} → {pr.base}
                   </span>
                 ),
                 icon: icon(GitPullRequest),
@@ -222,7 +240,7 @@ export function Sidebar(p: Props) {
             )}
           </Section>
         )}
-        <Section title="Tags" count={refs.tags.length}>
+        <Section title="Tags" icon={Tag} count={refs.tags.length} empty="No tags yet">
           {refs.tags
             .filter((t) => match(t.name))
             .map((t) =>
@@ -235,7 +253,7 @@ export function Sidebar(p: Props) {
               }),
             )}
         </Section>
-        <Section title="Stashes" count={refs.stashes.length}>
+        <Section title="Stashes" icon={Archive} count={refs.stashes.length} empty="No stashes. Stash changes to set them aside.">
           {refs.stashes
             .filter((s) => match(s.message))
             .map((s) =>
@@ -243,7 +261,7 @@ export function Sidebar(p: Props) {
             )}
         </Section>
         {p.extras && p.extras.worktrees.length > 1 && (
-          <Section title="Worktrees" count={p.extras.worktrees.length}>
+          <Section title="Worktrees" icon={FolderTree} count={p.extras.worktrees.length}>
             {p.extras.worktrees.map((w) =>
               item({
                 key: w.path,
@@ -257,7 +275,7 @@ export function Sidebar(p: Props) {
           </Section>
         )}
         {p.extras && p.extras.submodules.length > 0 && (
-          <Section title="Submodules" count={p.extras.submodules.length}>
+          <Section title="Submodules" icon={Package} count={p.extras.submodules.length}>
             {p.extras.submodules.map((s) =>
               item({
                 key: s.path,
@@ -280,15 +298,35 @@ export function Sidebar(p: Props) {
   );
 }
 
-function Section({ title, count, children, action }: { title: string; count: number; children: ReactNode; action?: ReactNode }) {
+function Section({
+  title,
+  icon: Icon,
+  count,
+  empty,
+  children,
+  action,
+}: {
+  title: string;
+  icon: LucideIcon;
+  count: number;
+  empty?: string;
+  children: ReactNode;
+  action?: ReactNode;
+}) {
   return (
-    <details open className="shrink-0 rounded-[10px] border bg-panel p-1">
-      <summary className="flex h-7 cursor-pointer items-center gap-1.5 px-2 text-[11px] font-semibold tracking-[0.7px] text-muted-foreground uppercase">
+    <details open className="group/section shrink-0 rounded-[10px] border bg-panel p-1">
+      <summary className="flex h-7 cursor-pointer list-none items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold tracking-[0.7px] text-muted-foreground uppercase hover:text-foreground">
+        <ChevronRight className="size-3 shrink-0 transition-transform group-open/section:rotate-90" aria-hidden />
+        <Icon className="size-3.5 shrink-0" aria-hidden />
         <span className="flex-1">{title}</span>
-        <span className="font-medium">{count}</span>
+        <span className="rounded-full bg-raised px-1.5 text-[10.5px] font-medium tracking-normal">{count}</span>
         {action}
       </summary>
-      <ul className="max-h-37 overflow-y-auto">{children}</ul>
+      {count === 0 && empty ? (
+        <p className="px-2 pb-1.5 text-xs leading-[17px] text-dim">{empty}</p>
+      ) : (
+        <ul className="max-h-37 overflow-y-auto">{children}</ul>
+      )}
     </details>
   );
 }
