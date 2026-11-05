@@ -100,8 +100,12 @@ pub trait HostingProvider {
     fn checks(&self, _remote: &RemoteRef, _sha: &str) -> Result<Option<String>, String> {
         Ok(None)
     }
-    /// Profile photo URLs keyed by commit email, for people who committed recently.
-    fn avatars(&self, _remote: &RemoteRef) -> Result<HashMap<String, String>, String> {
+    /// Profile photo URLs keyed by lowercased commit email; `emails` are the repository's recent authors.
+    fn avatars(
+        &self,
+        _remote: &RemoteRef,
+        _emails: &[String],
+    ) -> Result<HashMap<String, String>, String> {
         Ok(HashMap::new())
     }
 }
@@ -285,8 +289,12 @@ struct Azure {
 
 impl GitHub {
     fn req(&self, r: RequestBuilder) -> RequestBuilder {
-        r.bearer_auth(&self.token)
-            .header("Accept", "application/vnd.github+json")
+        let r = r.header("Accept", "application/vnd.github+json");
+        if self.token.is_empty() {
+            r
+        } else {
+            r.bearer_auth(&self.token)
+        }
     }
 }
 
@@ -313,7 +321,11 @@ impl HostingProvider for GitHub {
     }
 
     // ponytail: newest 300 commits; older authors fall back to the placeholder avatar
-    fn avatars(&self, remote: &RemoteRef) -> Result<HashMap<String, String>, String> {
+    fn avatars(
+        &self,
+        remote: &RemoteRef,
+        _emails: &[String],
+    ) -> Result<HashMap<String, String>, String> {
         let mut map = HashMap::new();
         for page in 1..=3 {
             let url = format!(
@@ -436,6 +448,29 @@ impl GitLab {
 }
 
 impl HostingProvider for GitLab {
+    // ponytail: one request per author, capped at 40; batch if repos with more authors feel slow
+    fn avatars(
+        &self,
+        _remote: &RemoteRef,
+        emails: &[String],
+    ) -> Result<HashMap<String, String>, String> {
+        let mut map = HashMap::new();
+        for email in emails.iter().take(40) {
+            let url = format!("{}/avatar?size=64&email={}", self.api, enc(email));
+            let Ok(v) = send(self.req(client().get(url))) else {
+                continue;
+            };
+            // GitLab falls back to Gravatar identicons, which would leak emails to a third party
+            if let Some(a) = v["avatar_url"]
+                .as_str()
+                .filter(|a| !a.contains("gravatar.com"))
+            {
+                map.insert(email.to_lowercase(), a.to_owned());
+            }
+        }
+        Ok(map)
+    }
+
     fn repos(&self) -> Result<Vec<HostRepo>, String> {
         let url = format!(
             "{}/projects?membership=true&per_page=100&order_by=last_activity_at",
@@ -1091,8 +1126,27 @@ pub async fn hosting_merge(account: String, url: String, number: u64, method: St
 }
 
 #[tauri::command]
-pub async fn hosting_avatars(account: String, url: String) -> Res<HashMap<String, String>> {
-    blocking(move || with_remote(&url, &account, |p, r| p.avatars(r))).await
+pub async fn hosting_avatars(
+    account: String,
+    url: String,
+    root: String,
+) -> Res<HashMap<String, String>> {
+    blocking(move || {
+        let emails = githawk_core::inspect::authors(&root, 2000);
+        let remote =
+            parse_remote(&url).ok_or("This remote is not on a supported hosting provider")?;
+        match provider(remote.provider, remote.api.clone(), &account) {
+            Ok(p) => p.avatars(&remote, &emails),
+            // public GitHub repositories list commits without a token (60 requests an hour)
+            Err(_) if remote.provider == Provider::Github => GitHub {
+                token: String::new(),
+                api: remote.api.clone(),
+            }
+            .avatars(&remote, &emails),
+            Err(e) => Err(e),
+        }
+    })
+    .await
 }
 
 /// CI status for each commit; commits without checks are left out.

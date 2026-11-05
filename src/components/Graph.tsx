@@ -204,7 +204,7 @@ export function Graph(p: Props) {
       const merge = r.parents.length > 1;
       if (r.refs.length) {
         ctx.strokeStyle = color(r.color);
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(0, cy);
         ctx.lineTo(cx - (merge ? 4.5 : 10), cy);
@@ -344,7 +344,7 @@ export function Graph(p: Props) {
                 >
                   <div className="relative flex shrink-0 items-center gap-1 overflow-hidden pr-3 pl-1.5" style={{ width: REFS_W - 4 }}>
                     {r.refs.length > 0 && (
-                      <span aria-hidden className="absolute top-1/2 right-0 left-3 h-[1.5px] -translate-y-1/2" style={{ background: lane(r.color) }} />
+                      <span aria-hidden className="absolute top-1/2 right-0 left-3 h-0.5 -translate-y-1/2" style={{ background: lane(r.color) }} />
                     )}
                     <Pills row={r} refMenu={p.refMenu} onDropRef={p.onDropRef} onOpenRef={p.onOpenRef} checks={p.checks} />
                   </div>

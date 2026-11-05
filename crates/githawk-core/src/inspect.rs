@@ -307,6 +307,21 @@ pub fn ahead_behind(root: &str, a: &str, b: &str) -> Result<(usize, usize), Stri
     repo.graph_ahead_behind(oid(a)?, oid(b)?).map_err(e)
 }
 
+/// Distinct author emails of the newest `limit` commits, most recent first, lowercased.
+pub fn authors(root: &str, limit: usize) -> Vec<String> {
+    let out = run(
+        Path::new(root),
+        &["log", "--all", "--format=%ae", &format!("-n{limit}")],
+        None,
+    )
+    .unwrap_or_default();
+    let mut seen = std::collections::HashSet::new();
+    out.lines()
+        .map(str::to_lowercase)
+        .filter(|e| !e.is_empty() && seen.insert(e.clone()))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

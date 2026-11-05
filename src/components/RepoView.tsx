@@ -236,19 +236,30 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
     loadPrs();
   }, [loadPrs, settings.active]);
 
+  const remoteUrls = refs ? [...new Set(Object.values(refs.urls))].join("\n") : "";
   useEffect(() => {
     setAvatars(null);
-    if (!originUrl || !hostAccount) return;
+    if (!remoteUrls) return;
     let live = true;
-    api
-      .detect(originUrl)
-      .then((d) => (d?.provider === "github" ? api.avatars(hostAccount, originUrl) : null))
-      .then((map) => live && map && setAvatars(map))
-      .catch(() => {});
+    (async () => {
+      const merged: Record<string, string> = {};
+      let found = false;
+      for (const url of remoteUrls.split("\n")) {
+        const d = await api.detect(url).catch(() => null);
+        if (!d || (d.provider !== "github" && d.provider !== "gitlab")) continue;
+        const acct = account(d.key);
+        if (d.provider !== "github" && !(await api.hasToken(acct).catch(() => false))) continue;
+        const map = await api.avatars(acct, url, root).catch(() => null);
+        if (!map) continue;
+        found = true;
+        for (const [email, photo] of Object.entries(map)) merged[email] ??= photo;
+      }
+      if (live && found) setAvatars(merged);
+    })();
     return () => {
       live = false;
     };
-  }, [hostAccount, originUrl]);
+  }, [remoteUrls, root, settings.active]);
 
   const remoteName = refs && (refs.urls.origin ? "origin" : Object.keys(refs.urls)[0]);
   const heads = (prs?.list ?? [])
