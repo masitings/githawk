@@ -12,6 +12,7 @@ import { ask, PromptHost } from "@/lib/prompt";
 import { RepoView } from "@/components/RepoView";
 import { PROVIDERS, SettingsView, type SettingsSection } from "@/components/SettingsView";
 import { CloneDialog } from "@/components/CloneDialog";
+import { checkForUpdate } from "@/lib/update";
 import { account, actionFor, activeProfile, setSettings, useSettings } from "@/lib/settings";
 
 type Tab = { root: string; alias: string };
@@ -46,6 +47,9 @@ export default function App() {
   const [cloneOpen, setCloneOpen] = useState(false);
   const [goto, setGoto] = useState<{ root: string; ref: string; n: number } | null>(null);
 
+  useEffect(() => {
+    if (!import.meta.env.DEV) checkForUpdate();
+  }, []);
   useEffect(() => save("githawk.tabs", tabs), [tabs]);
   useEffect(() => save("githawk.recents", recents), [recents]);
   useEffect(() => {

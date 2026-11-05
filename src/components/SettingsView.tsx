@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Copy, ExternalLink, KeyRound, Upload, Pencil, Plus, Search, Settings as Gear, ShieldCheck, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { appVersion, checkForUpdate } from "@/lib/update";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { api, type GpgKey, type Provider, type Server, type SshKey } from "@/lib/api";
 import { ACTIONS, DEFAULT_SHORTCUTS, account, activeProfile, comboOf, getSettings, prettyCombo, setSettings, useSettings, type Profile } from "@/lib/settings";
@@ -61,6 +62,10 @@ export function SettingsView({ initial = "general", onClose }: { initial?: Setti
   const s = useSettings();
   const profile = activeProfile(s);
   const [section, setSection] = useState<SettingsSection>(initial);
+  const [version, setVersion] = useState("");
+  useEffect(() => {
+    appVersion().then(setVersion).catch(() => {});
+  }, []);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
@@ -165,6 +170,14 @@ export function SettingsView({ initial = "general", onClose }: { initial?: Setti
                     <option value={15}>Every 15 minutes</option>
                     <option value={60}>Every hour</option>
                   </select>
+                </Row>
+              </Card>
+              <H3>Updates</H3>
+              <Card>
+                <Row label={`GitHawk ${version}`} text="Checks GitHub Releases on launch. Updates are signed and verified before installing.">
+                  <Button variant="outline" size="sm" onClick={() => checkForUpdate(true)}>
+                    Check for updates
+                  </Button>
                 </Row>
               </Card>
             </>
