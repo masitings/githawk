@@ -57,7 +57,16 @@ fn cap(mut s: String) -> String {
 fn prompt(root: &str, task: &Task) -> Result<(&'static str, String), String> {
     Ok(match task {
         Task::CommitMessage => {
-            let diff = git(root, &["diff", "--cached", "--no-color", "--no-ext-diff"])?;
+            let diff = git(
+                root,
+                &[
+                    "diff",
+                    "--cached",
+                    "--no-color",
+                    "--no-ext-diff",
+                    "--no-textconv",
+                ],
+            )?;
             if diff.trim().is_empty() {
                 return Err("Stage some changes first".into());
             }
@@ -77,6 +86,8 @@ fn prompt(root: &str, task: &Task) -> Result<(&'static str, String), String> {
                     "show",
                     "--no-color",
                     "--no-ext-diff",
+                    "--no-textconv",
+                    "--no-show-signature",
                     "--format=fuller",
                     "--stat",
                     "--patch",
@@ -88,7 +99,13 @@ fn prompt(root: &str, task: &Task) -> Result<(&'static str, String), String> {
             let range = format!("{}..{}", arg(from)?, arg(to)?);
             let log = git(
                 root,
-                &["log", "--no-merges", "--format=- %s (%h)%n%b", &range],
+                &[
+                    "log",
+                    "--no-show-signature",
+                    "--no-merges",
+                    "--format=- %s (%h)%n%b",
+                    &range,
+                ],
             )?;
             if log.trim().is_empty() {
                 return Err("No commits in that range".into());

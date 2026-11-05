@@ -163,10 +163,10 @@ fn parse_remote_with(url: &str, servers: &[Server]) -> Option<RemoteRef> {
     let server = servers.iter().find(|s| s.host.eq_ignore_ascii_case(host));
     let provider = match host {
         _ if server.is_some() => server?.kind,
-        h if h.ends_with("github.com") => Provider::Github,
-        h if h.ends_with("gitlab.com") => Provider::Gitlab,
-        h if h.ends_with("bitbucket.org") => Provider::Bitbucket,
-        h if h.ends_with("dev.azure.com") || h.ends_with("visualstudio.com") => Provider::Azure,
+        h if on(h, "github.com") => Provider::Github,
+        h if on(h, "gitlab.com") => Provider::Gitlab,
+        h if on(h, "bitbucket.org") => Provider::Bitbucket,
+        h if on(h, "dev.azure.com") || on(h, "visualstudio.com") => Provider::Azure,
         _ => return None,
     };
     let (key, api) = match server {
@@ -194,12 +194,41 @@ fn parse_remote_with(url: &str, servers: &[Server]) -> Option<RemoteRef> {
     } else {
         path.to_owned()
     };
+    // The path is formatted into API URLs, so `..`, `?` or `#` would redirect token-bearing requests.
+    let segments: Vec<&str> = path.split('/').collect();
+    let two = matches!(
+        provider,
+        Provider::Github | Provider::Bitbucket | Provider::BitbucketServer
+    );
+    if segments.len() < 2
+        || (two && segments.len() != 2)
+        || !segments
+            .iter()
+            .all(|s| safe_segment(s, provider == Provider::Azure))
+    {
+        return None;
+    }
     Some(RemoteRef {
         provider,
         path,
         key,
         api,
     })
+}
+
+fn on(host: &str, domain: &str) -> bool {
+    host.eq_ignore_ascii_case(domain) || host.to_ascii_lowercase().ends_with(&format!(".{domain}"))
+}
+
+fn safe_segment(s: &str, azure: bool) -> bool {
+    let decoded = s.to_ascii_lowercase().replace("%2e", ".");
+    let lower = s.to_ascii_lowercase();
+    !s.is_empty()
+        && decoded != "."
+        && decoded != ".."
+        && !(azure && (lower.contains("%2f") || lower.contains("%5c")))
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || "._-~".contains(c) || (azure && c == '%'))
 }
 
 fn combine(states: &[&str]) -> Option<String> {
@@ -1244,6 +1273,16 @@ mod tests {
         assert_eq!(
             p("ssh://git@git.corp.example:7999/proj/repo.git"),
             Some((Provider::BitbucketServer, "proj/repo".into()))
+        );
+        assert_eq!(p("https://github.com/a/b/../../repos/x/y/issues#"), None);
+        assert_eq!(p("https://github.com/a/b%2F..%2F..%2Fuser"), None);
+        assert_eq!(p("https://github.com/a/.%2e"), None);
+        assert_eq!(p("https://github.com/a/b?x=1"), None);
+        assert_eq!(p("https://evilgithub.com/a/b"), None);
+        assert_eq!(p("https://bitbucket.org/ws/repo/extra"), None);
+        assert_eq!(
+            p("https://dev.azure.com/org/My%20Project/_git/repo"),
+            Some((Provider::Azure, "org/My%20Project/repo".into()))
         );
         let ghe = parse_remote_with("git@ghe.corp.example:team/app.git", &servers).unwrap();
         assert_eq!(

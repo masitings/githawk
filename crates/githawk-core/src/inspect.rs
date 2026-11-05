@@ -64,6 +64,7 @@ pub fn history(root: &str, file: &str) -> Result<Vec<FileCommit>, String> {
         Path::new(root),
         &[
             "log",
+            "--no-show-signature",
             "--follow",
             "--name-only",
             "--format=%x1e%H%x1f%an%x1f%at%x1f%s",
@@ -264,15 +265,41 @@ pub struct Signature {
     pub signer: String,
 }
 
+// Pins verifier programs to global/system config so a repo's own .git/config can't pick one to run.
+// ponytail: read once per process; restart GitHawk after changing gpg.program globally
+fn trusted_verifiers() -> &'static [String] {
+    static ARGS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    ARGS.get_or_init(|| {
+        let outside = std::env::temp_dir();
+        let get = |scope: &str, key: &str| {
+            run(&outside, &["config", scope, "--get", key], None)
+                .ok()
+                .map(|v| v.trim().to_owned())
+                .filter(|v| !v.is_empty())
+        };
+        [
+            ("gpg.program", "gpg"),
+            ("gpg.ssh.program", "ssh-keygen"),
+            ("gpg.x509.program", "gpgsm"),
+        ]
+        .into_iter()
+        .flat_map(|(key, default)| {
+            let value = get("--global", key)
+                .or_else(|| get("--system", key))
+                .unwrap_or_else(|| default.to_owned());
+            ["-c".to_owned(), format!("{key}={value}")]
+        })
+        .collect()
+    })
+}
+
 pub fn signature(root: &str, id: &str) -> Result<Signature, String> {
     if !id.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err("Invalid commit id".into());
     }
-    let out = run(
-        Path::new(root),
-        &["log", "-1", "--format=%G?%x1f%GS", id],
-        None,
-    )?;
+    let mut args: Vec<&str> = trusted_verifiers().iter().map(String::as_str).collect();
+    args.extend(["log", "-1", "--format=%G?%x1f%GS", id]);
+    let out = run(Path::new(root), &args, None)?;
     let (status, signer) = out.trim().split_once('\x1f').unwrap_or((out.trim(), ""));
     Ok(Signature {
         status: status.to_owned(),
@@ -311,7 +338,13 @@ pub fn ahead_behind(root: &str, a: &str, b: &str) -> Result<(usize, usize), Stri
 pub fn authors(root: &str, limit: usize) -> Vec<String> {
     let out = run(
         Path::new(root),
-        &["log", "--all", "--format=%ae", &format!("-n{limit}")],
+        &[
+            "log",
+            "--no-show-signature",
+            "--all",
+            "--format=%ae",
+            &format!("-n{limit}"),
+        ],
         None,
     )
     .unwrap_or_default();
@@ -325,6 +358,59 @@ pub fn authors(root: &str, limit: usize) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn repo_config_cannot_pick_a_verifier_program() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        let git = |args: &[&str]| run(p, args, None).unwrap();
+        git(&["init", "-q"]);
+        git(&[
+            "-c",
+            "user.name=a",
+            "-c",
+            "user.email=a@a",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "base",
+        ]);
+        let tree = git(&["rev-parse", "HEAD^{tree}"]);
+        let parent = git(&["rev-parse", "HEAD"]);
+        let raw = format!(
+            "tree {}\nparent {}\nauthor a <a@a> 1700000000 +0000\ncommitter a <a@a> 1700000000 +0000\ngpgsig -----BEGIN PGP SIGNATURE-----\n \n AAAA\n -----END PGP SIGNATURE-----\n\nsigned\n",
+            tree.trim(),
+            parent.trim()
+        );
+        std::fs::write(p.join("c.txt"), raw).unwrap();
+        let id = git(&["hash-object", "-t", "commit", "-w", "c.txt"])
+            .trim()
+            .to_owned();
+        std::fs::remove_file(p.join("c.txt")).unwrap();
+        git(&["update-ref", "refs/heads/signed", &id]);
+
+        let marker = p.join("ran");
+        let script = p.join("evil.sh");
+        std::fs::write(
+            &script,
+            format!("#!/bin/sh\ntouch '{}'\nexit 1\n", marker.display()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        git(&["config", "gpg.program", script.to_str().unwrap()]);
+        git(&["config", "log.showSignature", "true"]);
+
+        let root = p.to_str().unwrap();
+        signature(root, &id).unwrap();
+        authors(root, 10);
+        assert!(
+            !marker.exists(),
+            "a program from the repository's config ran"
+        );
+    }
 
     #[test]
     fn history_follows_renames_and_conflicts_resolve() {
