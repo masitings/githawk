@@ -5,15 +5,20 @@ import { api, date, lane, type Opened, type RefLabel, type Row } from "@/lib/api
 import { WithMenu, type MenuItem } from "@/components/Menu";
 
 const ROW = 28;
-const LANE = 16;
+const LANE = 18;
 const PAGE = 500;
-const REFS_W = 190;
+const REFS_W = 210;
+const GRAPH_MIN = 100;
 // ponytail: fixed cap until the graph column is resizable
 const MAX_LANES = 24;
 const DRAG_TYPE = "application/x-githawk-ref";
 
-const initials = (name: string) =>
-  name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
+const AVATAR_FILLS = ["#8A6A48", "#8C4A66", "#4A7A8C", "#4A8A68", "#6A5E92"];
+const avatarFill = (name: string) => {
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.charCodeAt(0)) | 0;
+  return AVATAR_FILLS[Math.abs(h) % AVATAR_FILLS.length];
+};
 
 type Props = {
   root: string;
@@ -56,7 +61,7 @@ export function Graph(p: Props) {
   const items = v.getVirtualItems();
   const first = items[0]?.index ?? 0;
   const last = items[items.length - 1]?.index ?? 0;
-  const graphW = (Math.min(lanes, MAX_LANES) + 1) * LANE;
+  const graphW = Math.max(GRAPH_MIN, Math.min(lanes, MAX_LANES) * LANE + 10);
   const row = (data: number) => (data < 0 ? undefined : pages.current.get(Math.floor(data / PAGE))?.[data % PAGE]);
 
   useEffect(() => {
@@ -112,10 +117,9 @@ export function Graph(p: Props) {
     const css = getComputedStyle(document.documentElement);
     const colors = Array.from({ length: 8 }, (_, i) => css.getPropertyValue(`--lane-${i}`));
     const bg = css.getPropertyValue("--background");
-    const fg = css.getPropertyValue("--muted-foreground");
     const color = (i: number) => colors[i % 8];
     const top = el.scrollTop;
-    const x = (col: number) => col * LANE + LANE;
+    const x = (col: number) => col * LANE + 14;
     const y = (visual: number) => visual * ROW + ROW / 2 - top;
     const start = Math.max(0, Math.floor(top / ROW) - 1);
     const end = Math.min(total - 1, Math.ceil((top + h) / ROW));
@@ -125,7 +129,7 @@ export function Graph(p: Props) {
       const head = p.opened.head === null ? undefined : row(p.opened.head);
       const cx = x(head?.col ?? 0);
       ctx.setLineDash([3, 3]);
-      ctx.strokeStyle = fg;
+      ctx.strokeStyle = color(head?.color ?? 0);
       ctx.lineWidth = 2;
       if (head && p.opened.head !== null) {
         ctx.beginPath();
@@ -134,6 +138,7 @@ export function Graph(p: Props) {
         ctx.stroke();
       }
       ctx.beginPath();
+      ctx.setLineDash([3, 2]);
       ctx.arc(cx, y(0), 8, 0, Math.PI * 2);
       ctx.fillStyle = bg;
       ctx.fill();
@@ -167,29 +172,41 @@ export function Graph(p: Props) {
       }
     }
 
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = "600 8px sans-serif";
     for (let i = Math.max(start, off); i <= end; i++) {
       const r = row(i - off);
       if (!r) continue;
       const [cx, cy] = [x(r.col), y(i)];
-      ctx.fillStyle = color(r.color);
+      const merge = r.parents.length > 1;
+      if (r.refs.length) {
+        ctx.strokeStyle = color(r.color);
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(0, cy);
+        ctx.lineTo(cx - (merge ? 4.5 : 10), cy);
+        ctx.stroke();
+      }
       ctx.beginPath();
-      if (r.parents.length > 1) {
-        ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+      if (merge) {
+        ctx.fillStyle = color(r.color);
+        ctx.arc(cx, cy, 4.5, 0, Math.PI * 2);
         ctx.fill();
         continue;
       }
-      ctx.arc(cx, cy, 9, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 9.5, 0, Math.PI * 2);
+      ctx.fillStyle = avatarFill(r.author);
       ctx.fill();
-      if (r.head) {
-        ctx.strokeStyle = bg;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }
-      ctx.fillStyle = "#fff";
-      ctx.fillText(initials(r.author), cx, cy + 0.5);
+      ctx.strokeStyle = color(r.color);
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255, 255, 255, 0.78)";
+      ctx.beginPath();
+      ctx.arc(cx, cy - 1.6, 2.9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(cx - 5.4, cy + 6.6);
+      ctx.quadraticCurveTo(cx, cy + 0.6, cx + 5.4, cy + 6.6);
+      ctx.arc(cx, cy, 8.5, Math.asin(6.6 / 8.5), Math.PI - Math.asin(6.6 / 8.5));
+      ctx.fill();
     }
   });
 
@@ -215,12 +232,12 @@ export function Graph(p: Props) {
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div aria-hidden className="flex h-7 shrink-0 items-center border-b bg-panel text-[11px] font-semibold tracking-[0.6px] text-dim uppercase">
+      <div aria-hidden className="flex h-7 shrink-0 items-center overflow-hidden border-b bg-panel text-[11px] font-semibold tracking-[0.6px] whitespace-nowrap text-dim uppercase">
         <span className="shrink-0 pl-3" style={{ width: REFS_W }}>Branch / tag</span>
-        <span className="shrink-0 truncate pl-2" style={{ width: graphW }}>Graph</span>
-        <span className="flex-1 pl-2">Commit message</span>
-        <span className="w-36 shrink-0 px-2">Author</span>
-        <span className="w-40 shrink-0 px-2">Date</span>
+        <span className="shrink-0" style={{ width: graphW }}>Graph</span>
+        <span className="min-w-40 flex-1 truncate pr-3">Commit message</span>
+        <span className="w-30 min-w-0 truncate pr-2">Author</span>
+        <span className="w-32 min-w-0 truncate pr-2">Date</span>
       </div>
       <div className="relative min-h-0 flex-1">
         <canvas
@@ -250,11 +267,11 @@ export function Graph(p: Props) {
                     role="option"
                     aria-selected={sel}
                     onClick={() => p.onSelect("wip", -1, { range: false, toggle: false })}
-                    className={`absolute inset-x-0 flex items-center text-sm ${sel ? "bg-accent" : "hover:bg-muted/50"}`}
+                    className={`absolute inset-x-1 flex items-center overflow-hidden rounded-md border-y-2 border-transparent bg-clip-padding text-sm ${sel ? "bg-raised" : "hover:bg-panel-2"}`}
                     style={style}
                   >
-                    <div style={{ width: REFS_W + graphW }} className="shrink-0" />
-                    <span className="flex-1 truncate pl-2 italic text-muted-foreground">
+                    <div style={{ width: REFS_W - 4 + graphW }} className="shrink-0" />
+                    <span className="min-w-40 flex-1 truncate pr-3 italic text-muted-foreground">
                       {"// WIP"} · {p.wip} changed file{p.wip === 1 ? "" : "s"}
                     </span>
                   </WithMenu>
@@ -271,19 +288,19 @@ export function Graph(p: Props) {
                   role="option"
                   aria-selected={sel}
                   onClick={(e: React.MouseEvent) => p.onSelect(r.id, index, { range: e.shiftKey, toggle: e.metaKey || e.ctrlKey })}
-                  className={`absolute inset-x-0 flex items-center text-sm ${sel ? "" : "hover:bg-muted/50"} ${r.head ? "font-medium" : ""}`}
+                  className={`absolute inset-x-1 flex items-center overflow-hidden rounded-md border-y-2 border-transparent bg-clip-padding text-sm ${sel ? "" : "hover:bg-panel-2"} ${r.head ? "font-medium" : ""}`}
                   style={{
                     ...style,
                     background: sel ? `color-mix(in oklab, ${lane(r.color)} 26%, transparent)` : undefined,
                   }}
                 >
-                  <div className="flex shrink-0 items-center gap-1 overflow-hidden px-2" style={{ width: REFS_W }}>
+                  <div className="flex shrink-0 items-center gap-1 overflow-hidden pr-2 pl-1.5" style={{ width: REFS_W - 4 }}>
                     <Pills row={r} refMenu={p.refMenu} onDropRef={p.onDropRef} />
                   </div>
                   <div className="shrink-0" style={{ width: graphW }} />
-                  <span className="flex-1 truncate pl-2">{r.summary}</span>
-                  <span className="w-36 shrink-0 truncate px-2 text-xs text-muted-foreground">{r.author}</span>
-                  <time className="w-40 shrink-0 truncate px-2 text-xs text-dim">{date(r.time)}</time>
+                  <span className="min-w-40 flex-1 truncate pr-3">{r.summary}</span>
+                  <span className="w-30 min-w-0 truncate pr-2 text-xs text-muted-foreground">{r.author}</span>
+                  <time className="w-32 min-w-0 truncate pr-2 text-xs text-dim">{date(r.time)}</time>
                 </WithMenu>
               );
             })}

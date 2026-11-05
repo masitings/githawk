@@ -80,7 +80,7 @@ export function CommitPanel({ root, id, open, onOpen, onSelect, fileMenu }: Prop
           </Button>
         </div>
         <h2 className="font-medium">{summary}</h2>
-        {body.join("\n").trim() && <p className="whitespace-pre-wrap text-muted-foreground">{body.join("\n").trim()}</p>}
+        {body.join("\n").trim() && <p tabIndex={0} aria-label="Commit message body" className="max-h-40 overflow-auto rounded-md border bg-panel-2 px-2.5 py-2 whitespace-pre-wrap text-muted-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none">{body.join("\n").trim()}</p>}
         {explain && (
           <div className="max-h-64 overflow-auto rounded-md border bg-muted/40 p-2 whitespace-pre-wrap" aria-label="AI explanation">
             {explain}

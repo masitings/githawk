@@ -817,11 +817,11 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex min-h-[54px] shrink-0 items-center gap-0.5 overflow-x-auto border-b bg-panel px-3 py-1">
-        <div className="flex h-11 min-w-0 shrink flex-col justify-center px-2.5">
+        <div className="flex h-11 max-w-56 min-w-24 shrink-0 flex-col justify-center overflow-hidden px-2.5">
           <span className="text-[10.5px] tracking-[0.6px] text-dim uppercase">Branch</span>
           <span className="flex min-w-0 items-center gap-1.5 text-sm font-semibold" title="Current branch">
             <GitBranch className="size-3.5 shrink-0" aria-hidden />
-            <span className="max-w-48 truncate">{current ?? "detached HEAD"}</span>
+            <span className="truncate">{current ?? "detached HEAD"}</span>
           </span>
         </div>
         <span className="min-w-3 flex-1" />
