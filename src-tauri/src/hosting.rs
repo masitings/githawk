@@ -254,6 +254,30 @@ fn client() -> Client {
         .expect("http client")
 }
 
+/// GitHub puts details in `errors[].message`, GitLab sends `message` as a field → reasons map.
+fn error_text(body: &Value) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    match &body["message"] {
+        Value::String(m) => parts.push(m.clone()),
+        Value::Object(fields) => parts.extend(fields.iter().map(|(k, v)| match v {
+            Value::Array(r) => format!("{k} {}", r.iter().map(s).collect::<Vec<_>>().join(", ")),
+            v => format!("{k} {}", s(v)),
+        })),
+        _ => {}
+    }
+    if let Some(m) = body["error"]["message"].as_str() {
+        parts.push(m.into());
+    }
+    parts.extend(
+        body["errors"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e["message"].as_str().map(str::to_owned)),
+    );
+    parts.join(": ")
+}
+
 pub(crate) fn send(req: RequestBuilder) -> Result<Value, String> {
     let res = req.send().map_err(|e| e.to_string())?;
     let status = res.status();
@@ -261,11 +285,7 @@ pub(crate) fn send(req: RequestBuilder) -> Result<Value, String> {
     if status.is_success() {
         Ok(body)
     } else {
-        let msg = body["message"]
-            .as_str()
-            .or(body["error"]["message"].as_str())
-            .unwrap_or("");
-        Err(format!("{status} {msg}").trim().to_owned())
+        Err(format!("{status} {}", error_text(&body)).trim().to_owned())
     }
 }
 
@@ -338,7 +358,13 @@ impl HostingProvider for GitHub {
                 .json(&json!({ "title": title, "key": key })),
         )
         .map(drop)
-        .map_err(|e| format!("{e}. The token needs the write:public_key scope."))
+        .map_err(|e| {
+            if e.starts_with("403") || e.starts_with("404") {
+                format!("{e}. The token needs the write:public_key scope.")
+            } else {
+                e
+            }
+        })
     }
     fn repos(&self) -> Result<Vec<HostRepo>, String> {
         let v = send(
@@ -1254,6 +1280,14 @@ pub async fn hosting_review(account: String, url: String, number: u64, review: R
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explains_api_errors() {
+        let gh = json!({ "message": "Validation Failed", "errors": [{ "message": "key is already in use" }] });
+        assert_eq!(error_text(&gh), "Validation Failed: key is already in use");
+        let gl = json!({ "message": { "key": ["has already been taken"] } });
+        assert_eq!(error_text(&gl), "key has already been taken");
+    }
 
     #[test]
     fn combines_check_states() {
