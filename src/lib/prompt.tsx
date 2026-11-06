@@ -10,8 +10,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
-type Field = { name: string; label: string; value?: string; placeholder?: string; optional?: boolean; suggestions?: string[] };
+type Field = { name: string; label: string; value?: string; placeholder?: string; optional?: boolean; suggestions?: string[]; multiline?: boolean };
 type Check = { name: string; label: string; value?: boolean };
 type Ask = {
   title: string;
@@ -77,13 +78,23 @@ export function PromptHost() {
           {a?.fields?.map((f, i) => (
             <label key={f.name} className="grid gap-1.5 text-sm">
               {f.label}
-              <Input
-                autoFocus={i === 0}
-                value={text[f.name] ?? ""}
-                placeholder={f.placeholder}
-                list={f.suggestions && `ask-${f.name}`}
-                onChange={(e) => setText({ ...text, [f.name]: e.currentTarget.value })}
-              />
+              {f.multiline ? (
+                <Textarea
+                  autoFocus={i === 0}
+                  className="max-h-60"
+                  value={text[f.name] ?? ""}
+                  placeholder={f.placeholder}
+                  onChange={(e) => setText({ ...text, [f.name]: e.currentTarget.value })}
+                />
+              ) : (
+                <Input
+                  autoFocus={i === 0}
+                  value={text[f.name] ?? ""}
+                  placeholder={f.placeholder}
+                  list={f.suggestions && `ask-${f.name}`}
+                  onChange={(e) => setText({ ...text, [f.name]: e.currentTarget.value })}
+                />
+              )}
               {f.suggestions && (
                 <datalist id={`ask-${f.name}`}>
                   {f.suggestions.map((s) => (

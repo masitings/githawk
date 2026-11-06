@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Copy, LoaderCircle, Sparkles } from "lucide-react";
+import { ArrowLeftRight, Copy, LoaderCircle, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { api, date, short, type CommitInfo, type FileDiff, type Signature, type Target } from "@/lib/api";
@@ -72,8 +72,6 @@ export function CommitPanel({ root, id, open, onOpen, onSelect, fileMenu, avatar
   const [summary, ...rest] = info.message.trim().split("\n");
   const body = rest.join("\n").trim();
   const photo = avatars && !photoFailed ? avatarUrl(info.email, avatars) : undefined;
-  const added = files.reduce((n, f) => n + f.added, 0);
-  const deleted = files.reduce((n, f) => n + f.deleted, 0);
   const signed = sig && SIGNED[sig.status];
 
   return (
@@ -173,6 +171,28 @@ export function CommitPanel({ root, id, open, onOpen, onSelect, fileMenu, avatar
         </dl>
       </div>
 
+      <FileList files={files} target={{ kind: "commit", id: info.id }} open={open} onOpen={onOpen} fileMenu={fileMenu} />
+    </div>
+  );
+}
+
+function FileList({
+  files,
+  target,
+  open,
+  onOpen,
+  fileMenu,
+}: {
+  files: FileDiff[];
+  target: Target;
+  open: { target: Target; path: string } | null;
+  onOpen: (target: Target, path: string) => void;
+  fileMenu: (path: string) => MenuItem[];
+}) {
+  const added = files.reduce((n, f) => n + f.added, 0);
+  const deleted = files.reduce((n, f) => n + f.deleted, 0);
+  return (
+    <>
       <div className="flex items-center gap-2 px-3.5 pt-2.5 pb-1.5">
         <span className="flex-1 text-[11px] font-semibold tracking-[0.7px] text-muted-foreground uppercase">
           {files.length} file{files.length === 1 ? "" : "s"} changed
@@ -182,7 +202,7 @@ export function CommitPanel({ root, id, open, onOpen, onSelect, fileMenu, avatar
       </div>
       <ul className="min-h-0 flex-1 overflow-auto px-1 pb-2">
         {files.map((f) => {
-          const active = open?.path === f.path && open.target.kind === "commit";
+          const active = open?.path === f.path && JSON.stringify(open.target) === JSON.stringify(target);
           const [label, tone] = STATUS[f.status] ?? STATUS.M;
           const slash = f.path.lastIndexOf("/") + 1;
           return (
@@ -191,7 +211,7 @@ export function CommitPanel({ root, id, open, onOpen, onSelect, fileMenu, avatar
                 <button
                   className={`flex h-[30px] w-full items-center gap-2 rounded-md px-3 text-left text-[12.5px] ${active ? "bg-raised" : "hover:bg-panel-2"}`}
                   title={f.old_path ? `${f.old_path} → ${f.path}` : f.path}
-                  onClick={() => onOpen({ kind: "commit", id: info.id }, f.path)}
+                  onClick={() => onOpen(target, f.path)}
                 >
                   <span
                     aria-label={label}
@@ -210,14 +230,68 @@ export function CommitPanel({ root, id, open, onOpen, onSelect, fileMenu, avatar
                     <>
                       {f.added > 0 && <span className="font-mono text-[11px] text-add">+{f.added}</span>}
                       {f.deleted > 0 && <span className="font-mono text-[11px] text-del">−{f.deleted}</span>}
-                    </>
-                  )}
-                </button>
-              </WithMenu>
-            </li>
-          );
-        })}
-      </ul>
+                  </>
+                )}
+              </button>
+            </WithMenu>
+          </li>
+        );
+      })}
+    </ul>
+    </>
+  );
+}
+
+export function ComparePanel({
+  root,
+  from,
+  to,
+  open,
+  onOpen,
+  onSwap,
+  onClose,
+  fileMenu,
+}: {
+  root: string;
+  from: string;
+  to: string;
+  open: { target: Target; path: string } | null;
+  onOpen: (target: Target, path: string) => void;
+  onSwap: () => void;
+  onClose: () => void;
+  fileMenu: (path: string) => MenuItem[];
+}) {
+  const [files, setFiles] = useState<FileDiff[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    setFiles(null);
+    api
+      .diff(root, { kind: "range", from, to })
+      .then((f) => live && setFiles(f))
+      .catch((e) => toast.error(String(e)));
+    return () => {
+      live = false;
+    };
+  }, [root, from, to]);
+  const label = (rev: string) => (/^[0-9a-f]{40}$/.test(rev) ? short(rev) : rev);
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <header className="flex h-7 shrink-0 items-center gap-1 border-b bg-panel pr-1.5 pl-3.5">
+        <div className="min-w-0 flex-1 truncate text-[12.5px] font-semibold" title={`Changes from ${from} to ${to}`}>
+          Compare <span className="font-mono font-medium text-muted-foreground">{label(from)}</span> → <span className="font-mono font-medium text-muted-foreground">{label(to)}</span>
+        </div>
+        <Button size="icon-xs" variant="ghost" aria-label="Swap sides" title="Swap sides" onClick={onSwap}>
+          <ArrowLeftRight />
+        </Button>
+        <Button size="icon-xs" variant="ghost" aria-label="Close comparison" onClick={onClose}>
+          <X />
+        </Button>
+      </header>
+      {files ? (
+        <FileList files={files} target={{ kind: "range", from, to }} open={open} onOpen={onOpen} fileMenu={fileMenu} />
+      ) : (
+        <p className="p-3 text-sm text-muted-foreground">Loading…</p>
+      )}
     </div>
   );
 }

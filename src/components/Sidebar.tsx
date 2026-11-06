@@ -17,6 +17,8 @@ type Props = {
   onCheckout: (name: string) => void;
   onCreatePr: () => void;
   onAddSubmodule: () => void;
+  onAddRemote: () => void;
+  remoteMenu: (remote: string) => MenuItem[];
   refMenu: (ref: RefLabel) => MenuItem[];
   stashMenu: (s: Stash) => MenuItem[];
   worktreeMenu: (w: Worktree) => MenuItem[];
@@ -32,7 +34,7 @@ export function Sidebar(p: Props) {
   const { refs } = p;
   if (!refs) return <aside className="w-60 shrink-0 border-r" />;
 
-  const byRemote = new Map<string, typeof refs.remote>();
+  const byRemote = new Map<string, typeof refs.remote>(refs.remotes.map((r) => [r, []]));
   for (const r of refs.remote.filter((r) => match(r.name))) {
     const remote = refs.remotes.find((x) => r.name.startsWith(`${x}/`)) ?? r.name.split("/")[0];
     byRemote.set(remote, [...(byRemote.get(remote) ?? []), r]);
@@ -178,16 +180,32 @@ export function Sidebar(p: Props) {
             (b) => b.head,
           )}
         </Section>
-        <Section title="Remote" icon={Cloud} count={refs.remote.length} empty="No remotes. Add one to push and pull.">
+        <Section
+          title="Remote"
+          icon={Cloud}
+          count={refs.remotes.length}
+          empty="No remotes. Add one to push and pull."
+          action={
+            <Button size="icon-xs" variant="ghost" aria-label="Add remote" onClick={p.onAddRemote}>
+              <Plus />
+            </Button>
+          }
+        >
           {[...byRemote].map(([remote, list]) => (
             <li key={remote}>
               <details open className="group/remote">
-                <summary className="flex h-7 cursor-pointer list-none items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground hover:bg-raised">
+                <WithMenu
+                  items={() => p.remoteMenu(remote)}
+                  render={<summary />}
+                  className="flex h-7 cursor-pointer list-none items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground hover:bg-raised"
+                >
                   <ChevronRight className="size-3 shrink-0 transition-transform group-open/remote:rotate-90" aria-hidden />
                   <Server className="size-3.5 shrink-0" aria-hidden />
-                  <span className="min-w-0 flex-1 truncate">{remote}</span>
+                  <span className="min-w-0 flex-1 truncate" title={refs.urls[remote]}>
+                    {remote}
+                  </span>
                   <span className="text-xs">{list.length}</span>
-                </summary>
+                </WithMenu>
                 <ul className="pl-4">
                   {folders(
                     list,

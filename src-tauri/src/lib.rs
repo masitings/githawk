@@ -128,8 +128,27 @@ async fn refs(root: String) -> Res<Refs> {
 }
 
 #[tauri::command]
-async fn diff(root: String, target: Target, file: Option<String>) -> Res<Vec<FileDiff>> {
-    blocking(move || repo::diff(&root, &target, file.as_deref()).map_err(err)).await
+async fn diff(
+    root: String,
+    target: Target,
+    file: Option<String>,
+    ignore_whitespace: Option<bool>,
+) -> Res<Vec<FileDiff>> {
+    blocking(move || {
+        repo::diff(
+            &root,
+            &target,
+            file.as_deref(),
+            ignore_whitespace.unwrap_or(false),
+        )
+        .map_err(err)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn ignore(root: String, pattern: String) -> Res<()> {
+    blocking(move || ops::ignore(Path::new(&root), &pattern)).await
 }
 
 #[tauri::command]
@@ -545,6 +564,7 @@ pub fn run() {
             run_op,
             clone_repo,
             init_repo,
+            ignore,
             cancel,
             watch,
             undo,

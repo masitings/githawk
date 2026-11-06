@@ -25,7 +25,7 @@ pub fn apply_lines(
         Mode::Stage | Mode::Discard => Target::Unstaged,
         Mode::Unstage => Target::Staged,
     };
-    let diff = make_diff(&repo, &target, Some(file))?;
+    let diff = make_diff(&repo, &target, Some(file), false)?;
     let mut patch = Patch::from_diff(&diff, 0)?.ok_or_else(|| Error::from_str("no changes"))?;
     let text = String::from_utf8_lossy(&patch.to_buf()?).into_owned();
     let reverse = !matches!(mode, Mode::Stage);
@@ -149,7 +149,7 @@ mod tests {
         .unwrap();
 
         let path = p.to_str().unwrap();
-        let unstaged = crate::repo::diff(path, &Target::Unstaged, Some("f.txt")).unwrap();
+        let unstaged = crate::repo::diff(path, &Target::Unstaged, Some("f.txt"), false).unwrap();
         assert_eq!(unstaged[0].hunks.len(), 2);
         let plus = unstaged[0].hunks[1]
             .lines
@@ -167,7 +167,7 @@ mod tests {
         apply_lines(path, "f.txt", Mode::Unstage, &[(0, minus), (0, plus)]).unwrap();
         assert_eq!(git(&["diff", "--cached"]), "");
 
-        let unstaged = crate::repo::diff(path, &Target::Unstaged, Some("f.txt")).unwrap();
+        let unstaged = crate::repo::diff(path, &Target::Unstaged, Some("f.txt"), false).unwrap();
         let all: Vec<_> = (0..unstaged[0].hunks[0].lines.len())
             .map(|l| (0, l))
             .collect();

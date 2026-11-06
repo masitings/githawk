@@ -50,3 +50,16 @@ assert.equal(avatarUrl("octo@users.noreply.github.com", {}), "https://github.com
 assert.equal(avatarUrl("Maya@Example.com", { "maya@example.com": "https://a/u/1?v=4" }), "https://a/u/1?v=4&s=64");
 assert.equal(avatarUrl("nobody@example.com", {}), undefined);
 console.log("avatars ok");
+
+import { changedSpans } from "./worddiff.ts";
+const spans = changedSpans([
+  { origin: " ", text: "keep" },
+  { origin: "-", text: "\tlet x = 1;" },
+  { origin: "+", text: "\tlet x = 42;" },
+  { origin: "-", text: "abc" },
+  { origin: "+", text: "xyz" },
+]);
+assert.deepEqual(spans.get(1), [12, 13]);
+assert.deepEqual(spans.get(2), [12, 14]);
+assert.equal(spans.has(3), false, "lines with nothing in common get no word highlight");
+console.log("worddiff ok");

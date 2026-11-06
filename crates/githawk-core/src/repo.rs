@@ -96,7 +96,14 @@ pub fn status(path: &str) -> Result<Status, Error> {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Target {
-    Commit { id: String },
+    Commit {
+        id: String,
+    },
+    /// Changes from `from` to `to`; both accept any revision git understands.
+    Range {
+        from: String,
+        to: String,
+    },
     Staged,
     Unstaged,
 }
@@ -131,8 +138,10 @@ pub(crate) fn make_diff<'r>(
     repo: &'r Repository,
     target: &Target,
     file: Option<&str>,
+    ignore_whitespace: bool,
 ) -> Result<Diff<'r>, Error> {
     let mut opts = DiffOptions::new();
+    opts.ignore_whitespace(ignore_whitespace);
     if let Some(f) = file {
         opts.pathspec(f).disable_pathspec_match(true);
     }
@@ -141,6 +150,10 @@ pub(crate) fn make_diff<'r>(
             let c = repo.find_commit(Oid::from_str(id)?)?;
             let old = c.parents().next().map(|p| p.tree()).transpose()?;
             repo.diff_tree_to_tree(old.as_ref(), Some(&c.tree()?), Some(&mut opts))?
+        }
+        Target::Range { from, to } => {
+            let tree = |rev: &str| repo.revparse_single(rev).and_then(|o| o.peel_to_tree());
+            repo.diff_tree_to_tree(Some(&tree(from)?), Some(&tree(to)?), Some(&mut opts))?
         }
         Target::Staged => {
             let head = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
@@ -160,9 +173,14 @@ pub(crate) fn make_diff<'r>(
 }
 
 /// Lists changed files; hunks are filled only when `file` is given.
-pub fn diff(path: &str, target: &Target, file: Option<&str>) -> Result<Vec<FileDiff>, Error> {
+pub fn diff(
+    path: &str,
+    target: &Target,
+    file: Option<&str>,
+    ignore_whitespace: bool,
+) -> Result<Vec<FileDiff>, Error> {
     let repo = Repository::discover(path)?;
-    let diff = make_diff(&repo, target, file)?;
+    let diff = make_diff(&repo, target, file, ignore_whitespace)?;
     let mut out = Vec::new();
     for (i, d) in diff.deltas().enumerate() {
         let new_path = d.new_file().path().or(d.old_file().path());
@@ -193,7 +211,7 @@ pub fn diff(path: &str, target: &Target, file: Option<&str>) -> Result<Vec<FileD
             hunks: Vec::new(),
         };
         if file.is_none()
-            && matches!(target, Target::Commit { .. })
+            && matches!(target, Target::Commit { .. } | Target::Range { .. })
             && let Some(patch) = Patch::from_diff(&diff, i)?
         {
             let (_, added, deleted) = patch.line_stats()?;
@@ -405,4 +423,44 @@ pub fn root(path: &str) -> Result<String, Error> {
     let repo = Repository::discover(path)?;
     let p = repo.workdir().unwrap_or(repo.path());
     Ok(p.to_string_lossy().trim_end_matches('/').to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn range_and_whitespace() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        let git = |args: &[&str]| crate::ops::run(p, args, None).unwrap();
+        git(&["init", "-q", "-b", "main"]);
+        git(&["config", "user.email", "t@t"]);
+        git(&["config", "user.name", "t"]);
+        let commit = |text: &str| {
+            std::fs::write(p.join("f.txt"), text).unwrap();
+            git(&["commit", "-qam", "c"]);
+        };
+        std::fs::write(p.join("f.txt"), "a\n").unwrap();
+        git(&["add", "f.txt"]);
+        git(&["commit", "-qm", "c"]);
+        commit("a\nb\n");
+        commit("a \nb\nc\n");
+        let range = Target::Range {
+            from: "HEAD~2".into(),
+            to: "main".into(),
+        };
+        let all = diff(p.to_str().unwrap(), &range, None, false).unwrap();
+        assert_eq!((all[0].added, all[0].deleted), (3, 1));
+        let one = diff(p.to_str().unwrap(), &range, Some("f.txt"), true).unwrap();
+        let changed: Vec<_> = one[0].hunks[0]
+            .lines
+            .iter()
+            .filter(|l| l.origin != ' ')
+            .collect();
+        assert!(
+            changed.iter().all(|l| l.origin == '+'),
+            "whitespace-only change hidden"
+        );
+    }
 }

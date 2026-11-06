@@ -53,7 +53,7 @@ import { Graph } from "@/components/Graph";
 import { Sidebar } from "@/components/Sidebar";
 import { DiffView } from "@/components/DiffView";
 import { WorkPanel } from "@/components/WorkPanel";
-import { CommitPanel } from "@/components/CommitPanel";
+import { CommitPanel, ComparePanel } from "@/components/CommitPanel";
 import { ConflictView } from "@/components/ConflictView";
 import { FileView } from "@/components/FileView";
 import { StatusBar } from "@/components/StatusBar";
@@ -133,6 +133,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
   }, [sidebar]);
   const [oplog, setOplog] = useState<OpLog | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [compare, setCompare] = useState<{ from: string; to: string } | null>(null);
   const [marked, setMarked] = useState<Map<string, number>>(new Map());
   const anchor = useRef<number | null>(null);
   const [center, setCenter] = useState<Center>({ kind: "graph" });
@@ -347,6 +348,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
   const remoteOf = (name: string) => refs?.remotes.find((r) => name.startsWith(`${r}/`)) ?? name.split("/")[0];
 
   async function select(id: string) {
+    setCompare(null);
     setSelected(id);
     setMarked(new Map());
     setCenter({ kind: "graph" });
@@ -366,6 +368,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
 
   async function onGraphSelect(id: string, index: number, mods: { range: boolean; toggle: boolean }) {
     setCenter({ kind: "graph" });
+    setCompare(null);
     if (id === "wip" || index < 0) {
       setSelected(id);
       setMarked(new Map());
@@ -559,6 +562,39 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
     refreshGraph();
   };
 
+  const compareWith = (from: string, to: string) => {
+    setCompare({ from, to });
+    setCenter({ kind: "graph" });
+  };
+
+  async function reword(row: Row) {
+    const info = await api.commit(root, row.id).catch((e) => void toast.error(String(e)));
+    if (!info) return;
+    const [summary, ...rest] = info.message.trim().split("\n");
+    const r = await ask({
+      title: "Edit commit message",
+      description: row.head ? undefined : "Rewrites this commit and every commit after it on the current branch. You can undo this.",
+      fields: [
+        { name: "summary", label: "Summary", value: summary },
+        { name: "body", label: "Description", value: rest.join("\n").trim(), optional: true, multiline: true },
+      ],
+      confirm: "Save",
+    });
+    if (!r || !r.text.summary.trim()) return;
+    const message = [r.text.summary.trim(), r.text.body.trim()].filter(Boolean).join("\n\n");
+    const base = row.parents[0] ?? null;
+    try {
+      const todo = await api.rebaseTodo(root, base);
+      if (!todo.some((t) => t.id === row.id)) return toast.error("Only commits on the current branch can be edited");
+      await api.rebase(root, base, todo.map((t) => (t.id === row.id ? { action: "reword", id: t.id, message } : { action: "pick", id: t.id, message: "" })), null);
+      toast.success("Commit message updated");
+    } catch (e) {
+      toast.error(String(e));
+    } finally {
+      refreshAll();
+    }
+  }
+
   const multi = (row: Row) => marked.size > 1 && marked.has(row.id);
   // Graph index grows with age, so a higher index is an older commit.
   const byIndex = (newestFirst: boolean) => [...marked].sort((a, b) => (newestFirst ? a[1] - b[1] : b[1] - a[1])).map(([id]) => id);
@@ -568,6 +604,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
       ? [
           { label: `Cherry-pick ${marked.size} commits`, onSelect: () => run({ op: "cherry-pick", ids: byIndex(false) }, "Cherry-picked") },
           { label: `Revert ${marked.size} commits`, onSelect: () => run({ op: "revert", ids: byIndex(true) }, "Reverted") },
+          ...(marked.size === 2 ? [{ label: "Compare these commits", onSelect: () => compareWith(byIndex(false)[0], byIndex(false)[1]) }] : []),
           "-",
           { label: "Copy commit SHAs", onSelect: () => navigator.clipboard.writeText(byIndex(false).join("\n")) },
         ]
@@ -589,6 +626,8 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
               if (r) run({ op: "tag", name: r.text.name.trim(), at: row.id, message: r.text.message });
             },
           },
+          { label: "Edit commit message…", onSelect: () => reword(row) },
+          ...(row.head ? [] : [{ label: `Compare with ${current ?? "HEAD"}`, onSelect: () => compareWith(row.id, "HEAD") }]),
           "-",
           { label: "Cherry-pick commit", onSelect: () => run({ op: "cherry-pick", ids: [row.id] }, "Cherry-picked") },
           { label: "Revert commit", onSelect: () => run({ op: "revert", ids: [row.id] }, "Reverted") },
@@ -612,6 +651,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
       : [];
 
   const viewItems = (name: string): MenuItem[] => [
+    ...(name === current ? [] : [{ label: `Compare with ${current ?? "HEAD"}`, onSelect: () => compareWith(current ?? "HEAD", name) }]),
     view.hidden.includes(name)
       ? { label: `Show ${name} in graph`, onSelect: () => setFilter({ ...view, hidden: view.hidden.filter((h) => h !== name) }) }
       : { label: `Hide ${name} in graph`, onSelect: () => setFilter({ ...view, hidden: [...view.hidden, name] }) },
@@ -633,6 +673,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
           },
         },
         { label: `AI changelog since ${ref.name}…`, onSelect: () => changelog(ref.name) },
+        { label: `Compare with ${current ?? "HEAD"}`, onSelect: () => compareWith(ref.name, current ?? "HEAD") },
         {
           label: `Delete tag ${ref.name}`,
           destructive: true,
@@ -702,6 +743,46 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
       },
     ];
   };
+
+  async function addRemote() {
+    const r = await ask({
+      title: "Add remote",
+      fields: [
+        { name: "name", label: "Name", value: refs?.remotes.length ? "" : "origin" },
+        { name: "url", label: "URL" },
+      ],
+      confirm: "Add",
+    });
+    if (r && (await run({ op: "remote-add", name: r.text.name.trim(), url: r.text.url.trim() }, `Added ${r.text.name.trim()}`)))
+      run({ op: "fetch", remote: r.text.name.trim() });
+  }
+
+  const remoteMenu = (remote: string): MenuItem[] => [
+    { label: `Fetch ${remote}`, onSelect: () => run({ op: "fetch", remote }, `Fetched ${remote}`) },
+    ...(refs?.urls[remote] ? [{ label: "Copy URL", onSelect: () => navigator.clipboard.writeText(refs.urls[remote]) }] : []),
+    {
+      label: "Change URL…",
+      onSelect: async () => {
+        const r = await ask({ title: `URL of ${remote}`, fields: [{ name: "url", label: "URL", value: refs?.urls[remote] ?? "" }], confirm: "Save" });
+        if (r) run({ op: "remote-set-url", name: remote, url: r.text.url.trim() }, `${remote} URL updated`);
+      },
+    },
+    {
+      label: "Rename…",
+      onSelect: async () => {
+        const r = await ask({ title: `Rename remote ${remote}`, fields: [{ name: "name", label: "New name", value: remote }], confirm: "Rename" });
+        if (r && r.text.name.trim() !== remote) run({ op: "remote-rename", old: remote, new: r.text.name.trim() });
+      },
+    },
+    "-",
+    {
+      label: `Remove ${remote}…`,
+      destructive: true,
+      onSelect: async () =>
+        (await confirm(`Remove remote ${remote}?`, "Its remote-tracking branches are deleted locally. Nothing changes on the server.", "Remove")) &&
+        run({ op: "remote-remove", name: remote }, `Removed ${remote}`),
+    },
+  ];
 
   const stashMenu = (s: Stash): MenuItem[] => [
     { label: "Apply stash", onSelect: () => run({ op: "stash-apply", index: s.index }) },
@@ -784,10 +865,31 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
     { label: "Copy commit SHA", onSelect: () => navigator.clipboard.writeText(id) },
   ];
 
-  const fileMenu = (path: string): MenuItem[] => [
-    { label: "File history", onSelect: () => setCenter({ kind: "file", path, tab: "history" }) },
-    { label: "Blame", onSelect: () => setCenter({ kind: "file", path, tab: "blame" }) },
-  ];
+  const ignore = (pattern: string) =>
+    api
+      .ignore(root, pattern)
+      .then(() => toast.success(`Added ${pattern} to .gitignore`))
+      .catch((e) => toast.error(String(e)))
+      .finally(refreshStatus);
+
+  const fileMenu = (path: string): MenuItem[] => {
+    const untracked = status?.files.some((f) => f.path === path && f.unstaged === "?");
+    const name = path.split("/").pop()!;
+    const ext = name.lastIndexOf(".") > 0 ? name.slice(name.lastIndexOf(".")) : null;
+    const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/") + 1) : null;
+    return [
+      { label: "File history", onSelect: () => setCenter({ kind: "file", path, tab: "history" }) },
+      { label: "Blame", onSelect: () => setCenter({ kind: "file", path, tab: "blame" }) },
+      ...(untracked
+        ? [
+            "-" as const,
+            { label: "Ignore this file", onSelect: () => ignore(`/${path}`) },
+            ...(ext ? [{ label: `Ignore all *${ext} files`, onSelect: () => ignore(`*${ext}`) }] : []),
+            ...(dir ? [{ label: `Ignore folder /${dir}`, onSelect: () => ignore(`/${dir}`) }] : []),
+          ]
+        : []),
+    ];
+  };
 
   const wipMenu = (): MenuItem[] => [
     { label: "Stash changes…", onSelect: stash },
@@ -963,6 +1065,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
       { id: "a:pr", label: "Create pull request…", group: "Action", run: () => createPr() },
       { id: "a:worktree", label: "Add worktree…", group: "Action", run: () => addWorktree() },
       { id: "a:submodule", label: "Add submodule…", group: "Action", run: () => addSubmodule() },
+      { id: "a:remote", label: "Add remote…", group: "Action", run: () => addRemote() },
       ...(flow
         ? (["feature", "release", "hotfix"] as const).map((k) => ({ id: `a:flow-${k}`, label: `Gitflow: start ${k}…`, group: "Action", run: () => flowStart(k) }))
         : [{ id: "a:flow-init", label: "Gitflow: initialise…", group: "Action", run: flowInit }]),
@@ -1143,6 +1246,8 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
             onCheckout={(name) => run({ op: "checkout", name })}
             onCreatePr={() => createPr()}
             onAddSubmodule={addSubmodule}
+            onAddRemote={addRemote}
+            remoteMenu={remoteMenu}
             refMenu={refMenu}
             stashMenu={stashMenu}
             worktreeMenu={worktreeMenu}
@@ -1158,7 +1263,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
                 root={root}
                 target={center.target}
                 path={center.path}
-                version={center.target.kind === "commit" ? 0 : statusVersion}
+                version={center.target.kind === "staged" || center.target.kind === "unstaged" ? statusVersion : 0}
                 onClose={() => setCenter({ kind: "graph" })}
               />
             )}
@@ -1235,7 +1340,24 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
           )}
         </div>
         <aside className={center.kind === "agents" || center.kind === "pr" ? "hidden" : "flex w-96 shrink-0 flex-col border-l bg-panel"} aria-label="Details">
-          {marked.size > 1 ? (
+          {compare ? (
+            <ComparePanel
+              root={root}
+              from={compare.from}
+              to={compare.to}
+              open={center.kind === "diff" ? center : null}
+              onOpen={(target, path) => setCenter({ kind: "diff", target, path })}
+              onSwap={() => {
+                setCompare({ from: compare.to, to: compare.from });
+                setCenter((c) => (c.kind === "diff" && c.target.kind === "range" ? { ...c, target: { kind: "range", from: c.target.to, to: c.target.from } } : c));
+              }}
+              onClose={() => {
+                setCompare(null);
+                setCenter({ kind: "graph" });
+              }}
+              fileMenu={fileMenu}
+            />
+          ) : marked.size > 1 ? (
             <div className="grid gap-2 p-3 text-sm">
               <p className="font-medium">{marked.size} commits selected</p>
               <Button size="sm" onClick={() => run({ op: "cherry-pick", ids: byIndex(false) }, "Cherry-picked")}>
@@ -1244,6 +1366,11 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
               <Button size="sm" variant="outline" onClick={() => run({ op: "revert", ids: byIndex(true) }, "Reverted")}>
                 Revert all
               </Button>
+              {marked.size === 2 && (
+                <Button size="sm" variant="outline" onClick={() => compareWith(byIndex(false)[0], byIndex(false)[1])}>
+                  Compare these commits
+                </Button>
+              )}
               <Button size="sm" variant="ghost" onClick={() => setMarked(new Map())}>
                 Clear selection
               </Button>

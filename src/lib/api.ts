@@ -61,7 +61,7 @@ export type Refs = {
   tags: Named[];
   stashes: Stash[];
 };
-export type Target = { kind: "commit"; id: string } | { kind: "staged" } | { kind: "unstaged" };
+export type Target = { kind: "commit"; id: string } | { kind: "range"; from: string; to: string } | { kind: "staged" } | { kind: "unstaged" };
 export type Mode = "stage" | "unstage" | "discard";
 
 export type Op =
@@ -73,7 +73,11 @@ export type Op =
   | { op: "delete-remote-branch"; remote: string; name: string }
   | { op: "set-upstream"; branch: string; upstream: string }
   | { op: "unset-upstream"; branch: string }
-  | { op: "fetch" }
+  | { op: "fetch"; remote?: string }
+  | { op: "remote-add"; name: string; url: string }
+  | { op: "remote-remove"; name: string }
+  | { op: "remote-rename"; old: string; new: string }
+  | { op: "remote-set-url"; name: string; url: string }
   | { op: "pull"; mode: "merge" | "ff-only" | "rebase" }
   | { op: "push"; remote: string; branch: string; force: boolean; setUpstream: boolean }
   | { op: "merge"; name: string }
@@ -142,8 +146,9 @@ export const api = {
   search: (root: string, query: string) => invoke<number[]>("search", { root, query }),
   status: (root: string) => invoke<Status>("status", { root }),
   refs: (root: string) => invoke<Refs>("refs", { root }),
-  diff: (root: string, target: Target, file?: string) =>
-    invoke<FileDiff[]>("diff", { root, target, file: file ?? null }),
+  diff: (root: string, target: Target, file?: string, ignoreWhitespace = false) =>
+    invoke<FileDiff[]>("diff", { root, target, file: file ?? null, ignoreWhitespace }),
+  ignore: (root: string, pattern: string) => invoke<void>("ignore", { root, pattern }),
   commit: (root: string, id: string) => invoke<CommitInfo>("commit_info", { root, id }),
   blob: (root: string, rev: string, file: string) => invoke<ArrayBuffer>("blob", { root, rev, file }),
   applyLines: (root: string, file: string, mode: Mode, selected: [number, number][]) =>

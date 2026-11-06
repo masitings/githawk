@@ -58,7 +58,26 @@ pub enum Op {
     UnsetUpstream {
         branch: String,
     },
-    Fetch,
+    /// All remotes when `remote` is None.
+    Fetch {
+        #[serde(default)]
+        remote: Option<String>,
+    },
+    RemoteAdd {
+        name: String,
+        url: String,
+    },
+    RemoteRemove {
+        name: String,
+    },
+    RemoteRename {
+        old: String,
+        new: String,
+    },
+    RemoteSetUrl {
+        name: String,
+        url: String,
+    },
     Pull {
         mode: PullMode,
     },
@@ -185,7 +204,12 @@ impl Op {
             Op::DeleteRemoteBranch { remote, name } => format!("Delete {remote}/{name}"),
             Op::SetUpstream { branch, .. } => format!("Set upstream of {branch}"),
             Op::UnsetUpstream { branch } => format!("Unset upstream of {branch}"),
-            Op::Fetch => "Fetch".into(),
+            Op::Fetch { remote: Some(r) } => format!("Fetch {r}"),
+            Op::Fetch { remote: None } => "Fetch".into(),
+            Op::RemoteAdd { name, .. } => format!("Add remote {name}"),
+            Op::RemoteRemove { name } => format!("Remove remote {name}"),
+            Op::RemoteRename { old, new } => format!("Rename remote {old} to {new}"),
+            Op::RemoteSetUrl { name, .. } => format!("Change URL of {name}"),
             Op::Pull { .. } => "Pull".into(),
             Op::Push { branch, .. } => format!("Push {branch}"),
             Op::Merge { name } => format!("Merge {name}"),
@@ -229,7 +253,7 @@ impl Op {
     pub fn is_long(&self) -> bool {
         matches!(
             self,
-            Op::Fetch
+            Op::Fetch { .. }
                 | Op::Pull { .. }
                 | Op::Push { .. }
                 | Op::DeleteRemoteBranch { .. }
@@ -266,7 +290,14 @@ impl Op {
                 a(&["branch", "--set-upstream-to", arg(upstream)?, arg(branch)?])
             }
             Op::UnsetUpstream { branch } => a(&["branch", "--unset-upstream", arg(branch)?]),
-            Op::Fetch => a(&["fetch", "--all", "--prune", "--progress"]),
+            Op::Fetch { remote: None } => a(&["fetch", "--all", "--prune", "--progress"]),
+            Op::Fetch { remote: Some(r) } => a(&["fetch", "--prune", "--progress", arg(r)?]),
+            Op::RemoteAdd { name, url } => a(&["remote", "add", arg(name)?, arg(url.trim())?]),
+            Op::RemoteRemove { name } => a(&["remote", "remove", arg(name)?]),
+            Op::RemoteRename { old, new } => a(&["remote", "rename", arg(old)?, arg(new)?]),
+            Op::RemoteSetUrl { name, url } => {
+                a(&["remote", "set-url", arg(name)?, arg(url.trim())?])
+            }
             Op::Pull { mode } => a(&[
                 "pull",
                 "--progress",
@@ -502,6 +533,25 @@ fn with_paths(mut v: Vec<String>, paths: &[String]) -> Vec<String> {
     v.push("--".into());
     v.extend(paths.iter().cloned());
     v
+}
+
+/// Appends `pattern` to the repository's top-level .gitignore, creating it if needed.
+pub fn ignore(root: &Path, pattern: &str) -> Result<(), String> {
+    let pattern = pattern.trim();
+    if pattern.is_empty() || pattern.contains('\n') {
+        return Err(format!("Invalid pattern: {pattern:?}"));
+    }
+    let path = root.join(".gitignore");
+    let old = std::fs::read_to_string(&path).unwrap_or_default();
+    if old.lines().any(|l| l.trim() == pattern) {
+        return Ok(());
+    }
+    let sep = if old.is_empty() || old.ends_with('\n') {
+        ""
+    } else {
+        "\n"
+    };
+    std::fs::write(&path, format!("{old}{sep}{pattern}\n")).map_err(|e| e.to_string())
 }
 
 static PROFILE_ENV: RwLock<Vec<(String, String)>> = RwLock::new(Vec::new());
@@ -771,6 +821,23 @@ mod tests {
         assert_eq!(git(&["config", "branch.feat.merge"]), "refs/heads/main\n");
         op(r#"{"op":"unset-upstream","branch":"feat"}"#);
         assert!(run(p, &["config", "branch.feat.merge"], None).is_err());
+        op(r#"{"op":"remote-add","name":"up","url":"https://example.com/a.git"}"#);
+        op(r#"{"op":"remote-set-url","name":"up","url":"https://example.com/b.git"}"#);
+        op(r#"{"op":"remote-rename","old":"up","new":"upstream"}"#);
+        assert_eq!(
+            git(&["remote", "get-url", "upstream"]),
+            "https://example.com/b.git\n"
+        );
+        op(r#"{"op":"remote-remove","name":"upstream"}"#);
+        assert_eq!(git(&["remote"]), "");
+        ignore(p, "/a.log").unwrap();
+        ignore(p, "/a.log").unwrap();
+        ignore(p, "*.tmp").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(p.join(".gitignore")).unwrap(),
+            "/a.log\n*.tmp\n"
+        );
+        std::fs::remove_file(p.join(".gitignore")).unwrap();
         op(r#"{"op":"rename-branch","old":"feat","new":"feature"}"#);
         op(r#"{"op":"delete-branch","name":"feature","force":true}"#);
         op(r#"{"op":"delete-tag","name":"v1"}"#);
