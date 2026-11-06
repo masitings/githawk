@@ -94,7 +94,10 @@ export type Op =
   | { op: "cherry-pick"; ids: string[] }
   | { op: "revert"; ids: string[] }
   | { op: "lfs-pull" }
-  | { op: "submodule-update" }
+  | { op: "submodule-add"; url: string; path: string }
+  | { op: "submodule-update"; path?: string; remote?: boolean }
+  | { op: "submodule-sync" }
+  | { op: "submodule-remove"; path: string }
   | { op: "worktree-add"; path: string; branch: string; create: boolean }
   | { op: "worktree-remove"; path: string; force: boolean }
   | { op: "reset"; id: string; mode: "soft" | "mixed" | "hard" | "keep" }

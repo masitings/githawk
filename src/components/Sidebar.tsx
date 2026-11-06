@@ -16,6 +16,7 @@ type Props = {
   onJump: (tip: string) => void;
   onCheckout: (name: string) => void;
   onCreatePr: () => void;
+  onAddSubmodule: () => void;
   refMenu: (ref: RefLabel) => MenuItem[];
   stashMenu: (s: Stash) => MenuItem[];
   worktreeMenu: (w: Worktree) => MenuItem[];
@@ -274,8 +275,18 @@ export function Sidebar(p: Props) {
             )}
           </Section>
         )}
-        {p.extras && p.extras.submodules.length > 0 && (
-          <Section title="Submodules" icon={Package} count={p.extras.submodules.length}>
+        {p.extras && (
+          <Section
+            title="Submodules"
+            icon={Package}
+            count={p.extras.submodules.length}
+            empty="No submodules"
+            action={
+              <Button size="icon-xs" variant="ghost" aria-label="Add submodule" onClick={p.onAddSubmodule}>
+                <Plus />
+              </Button>
+            }
+          >
             {p.extras.submodules.map((s) =>
               item({
                 key: s.path,

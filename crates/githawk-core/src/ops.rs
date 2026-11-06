@@ -131,7 +131,22 @@ pub enum Op {
         ids: Vec<String>,
     },
     LfsPull,
-    SubmoduleUpdate,
+    SubmoduleAdd {
+        url: String,
+        path: String,
+    },
+    /// All submodules when `path` is None; `remote` moves to the tip of the submodule's tracked branch.
+    SubmoduleUpdate {
+        #[serde(default)]
+        path: Option<String>,
+        #[serde(default)]
+        remote: bool,
+    },
+    SubmoduleSync,
+    /// Keeps `.git/modules/<name>`, as git does, so old commits can still check it out.
+    SubmoduleRemove {
+        path: String,
+    },
     WorktreeAdd {
         path: String,
         branch: String,
@@ -197,7 +212,12 @@ impl Op {
             Op::Revert { ids } => format!("Revert {} commit(s)", ids.len()),
             Op::Reset { id, .. } => format!("Reset to {}", short(id)),
             Op::LfsPull => "LFS pull".into(),
-            Op::SubmoduleUpdate => "Update submodules".into(),
+            Op::SubmoduleAdd { path, url } if path.is_empty() => format!("Add submodule {url}"),
+            Op::SubmoduleAdd { path, .. } => format!("Add submodule {path}"),
+            Op::SubmoduleUpdate { path: Some(p), .. } => format!("Update submodule {p}"),
+            Op::SubmoduleUpdate { .. } => "Update submodules".into(),
+            Op::SubmoduleSync => "Sync submodule URLs".into(),
+            Op::SubmoduleRemove { path } => format!("Remove submodule {path}"),
             Op::WorktreeAdd { path, .. } => format!("Add worktree {path}"),
             Op::WorktreeRemove { path, .. } => format!("Remove worktree {path}"),
             Op::FlowInit { .. } => "Initialise Gitflow".into(),
@@ -214,6 +234,8 @@ impl Op {
                 | Op::Push { .. }
                 | Op::DeleteRemoteBranch { .. }
                 | Op::PushTag { .. }
+                | Op::SubmoduleAdd { .. }
+                | Op::SubmoduleUpdate { .. }
         )
     }
 
@@ -345,8 +367,30 @@ impl Op {
             Op::CherryPick { ids } => with_args(a(&["cherry-pick"]), ids)?,
             Op::Revert { ids } => with_args(a(&["revert", "--no-edit"]), ids)?,
             Op::LfsPull => a(&["lfs", "pull"]),
-            Op::SubmoduleUpdate => {
-                a(&["submodule", "update", "--init", "--recursive", "--progress"])
+            Op::SubmoduleAdd { url, path } => {
+                let mut v = a(&["submodule", "add", "--", arg(url.trim())?]);
+                if !path.trim().is_empty() {
+                    v.push(path.trim().to_owned());
+                }
+                v
+            }
+            Op::SubmoduleUpdate { path, remote } => {
+                let mut v = a(&["submodule", "update", "--init", "--recursive", "--progress"]);
+                if *remote {
+                    v.push("--remote".into());
+                }
+                match path {
+                    Some(p) => with_paths(v, std::slice::from_ref(p)),
+                    None => v,
+                }
+            }
+            Op::SubmoduleSync => a(&["submodule", "sync", "--recursive"]),
+            Op::SubmoduleRemove { path } => {
+                let one = std::slice::from_ref(path);
+                return Ok(vec![
+                    with_paths(a(&["submodule", "deinit", "-f"]), one),
+                    with_paths(a(&["rm", "-f"]), one),
+                ]);
             }
             Op::WorktreeAdd {
                 path,
@@ -749,5 +793,40 @@ mod tests {
                 "main"
             ]
         );
+    }
+
+    #[test]
+    fn submodule_lifecycle() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        let git = |cwd: &Path, args: &[&str]| run(cwd, args, None).unwrap();
+        let op = |json: &str| {
+            let op: Op = serde_json::from_str(json).unwrap();
+            for c in op.commands().unwrap() {
+                let args: Vec<&str> = c.iter().map(String::as_str).collect();
+                run(p, &args, None).unwrap_or_else(|e| panic!("{json}: {e}"));
+            }
+        };
+        for d in [p.to_path_buf(), p.join("lib")] {
+            std::fs::create_dir_all(&d).unwrap();
+            git(&d, &["init", "-q", "-b", "main"]);
+            git(&d, &["config", "user.email", "t@t"]);
+            git(&d, &["config", "user.name", "t"]);
+            git(&d, &["commit", "-q", "--allow-empty", "-m", "init"]);
+        }
+        // An existing repo at the path is adopted in place, so no clone is needed.
+        op(r#"{"op":"submodule-add","url":"./lib","path":"lib"}"#);
+        assert!(git(p, &["config", "-f", ".gitmodules", "submodule.lib.url"]).contains("lib"));
+        git(p, &["commit", "-q", "-m", "add lib"]);
+        op(r#"{"op":"submodule-sync"}"#);
+        op(r#"{"op":"submodule-update","path":"lib"}"#);
+        op(r#"{"op":"submodule-remove","path":"lib"}"#);
+        assert!(!p.join("lib/.git").exists());
+        assert_eq!(
+            git(p, &["status", "--porcelain"]),
+            "M  .gitmodules\nD  lib\n"
+        );
+        let all: Op = serde_json::from_str(r#"{"op":"submodule-update"}"#).unwrap();
+        assert_eq!(all.commands().unwrap()[0].last().unwrap(), "--progress");
     }
 }

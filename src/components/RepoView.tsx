@@ -65,7 +65,7 @@ import { AgentsView } from "@/components/AgentsView";
 import { TerminalPanel } from "@/components/TerminalPanel";
 import { Palette, type PaletteItem } from "@/components/Palette";
 
-const LONG = new Set(["fetch", "pull", "push", "delete-remote-branch", "push-tag", "lfs-pull", "submodule-update"]);
+const LONG = new Set(["fetch", "pull", "push", "delete-remote-branch", "push-tag", "lfs-pull", "submodule-add", "submodule-update"]);
 const KEEPS_REFS = new Set(["stage", "unstage", "discard"]);
 const PROVIDER_NAME = { github: "GitHub", gitlab: "GitLab", bitbucket: "Bitbucket", azure: "Azure DevOps", "bitbucket-server": "Bitbucket" } as const;
 
@@ -732,9 +732,40 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
         ]),
   ];
 
+  async function addSubmodule() {
+    const r = await ask({
+      title: "Add submodule",
+      description: "Clone another repository into a folder of this one and record which commit it uses.",
+      fields: [
+        { name: "url", label: "Repository URL" },
+        { name: "path", label: "Folder", placeholder: "Defaults to the repository name", optional: true },
+      ],
+      confirm: "Add",
+    });
+    if (r) run({ op: "submodule-add", url: r.text.url.trim(), path: r.text.path.trim() }, "Submodule added. Commit it to record it.");
+  }
+
   const submoduleMenu = (s: Submodule): MenuItem[] => [
-    { label: "Open in new tab", onSelect: () => (s.actual ? onOpenRepo(`${root}/${s.path}`) : toast.error("Initialise submodules first")) },
+    s.actual
+      ? { label: "Open in new tab", onSelect: () => onOpenRepo(`${root}/${s.path}`) }
+      : { label: "Initialise", onSelect: () => run({ op: "submodule-update", path: s.path }, `${s.path} initialised`) },
+    ...(s.actual && s.actual !== s.expected
+      ? [{ label: "Reset to recorded commit", onSelect: () => run({ op: "submodule-update", path: s.path }, `${s.path} reset to ${s.expected?.slice(0, 7)}`) }]
+      : []),
+    { label: "Update to latest remote commit", onSelect: () => run({ op: "submodule-update", path: s.path, remote: true }, `${s.path} updated. Commit it to record the new commit.`) },
+    ...(s.url ? [{ label: "Copy URL", onSelect: () => navigator.clipboard.writeText(s.url!) }] : []),
+    "-",
     { label: "Update all submodules", onSelect: () => run({ op: "submodule-update" }, "Submodules updated") },
+    { label: "Sync URLs from .gitmodules", onSelect: () => run({ op: "submodule-sync" }, "Submodule URLs synced") },
+    "-",
+    {
+      label: "Remove submodule…",
+      destructive: true,
+      onSelect: async () => {
+        if (await confirm(`Remove submodule ${s.path}?`, "Deletes its folder and its .gitmodules entry. Commit afterwards to record the removal.", "Remove"))
+          run({ op: "submodule-remove", path: s.path }, `${s.path} removed`);
+      },
+    },
   ];
 
   const prMenu = (pr: Pr): MenuItem[] => [
@@ -931,6 +962,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
     items.push(
       { id: "a:pr", label: "Create pull request…", group: "Action", run: () => createPr() },
       { id: "a:worktree", label: "Add worktree…", group: "Action", run: () => addWorktree() },
+      { id: "a:submodule", label: "Add submodule…", group: "Action", run: () => addSubmodule() },
       ...(flow
         ? (["feature", "release", "hotfix"] as const).map((k) => ({ id: `a:flow-${k}`, label: `Gitflow: start ${k}…`, group: "Action", run: () => flowStart(k) }))
         : [{ id: "a:flow-init", label: "Gitflow: initialise…", group: "Action", run: flowInit }]),
@@ -938,6 +970,11 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
       { id: "a:rebase", label: `Interactive rebase ${current ?? "HEAD"}…`, group: "Action", hint: "pick the base commit in the graph", run: () => toast("Right-click the commit to rebase from, then choose Interactive rebase.") },
     );
     if (extras?.submodules.length) items.push({ id: "a:sub", label: "Update submodules", group: "Action", run: () => run({ op: "submodule-update" }, "Submodules updated") });
+    if (extras?.submodules.length)
+      items.push(
+        { id: "a:submodule-update", label: "Update all submodules", group: "Action", run: () => run({ op: "submodule-update" }, "Submodules updated") },
+        { id: "a:submodule-sync", label: "Sync submodule URLs", group: "Action", run: () => run({ op: "submodule-sync" }, "Submodule URLs synced") },
+      );
     if (extras?.lfs) items.push({ id: "a:lfs", label: "Git LFS pull", group: "Action", run: () => run({ op: "lfs-pull" }, "LFS files pulled") });
     for (const b of refs?.local ?? []) items.push({ id: `b:${b.name}`, label: b.name, group: "Branch", hint: b.head ? "current" : "checkout", run: () => (b.head ? select(b.tip) : run({ op: "checkout", name: b.name })) });
     for (const b of refs?.remote ?? []) items.push({ id: `r:${b.name}`, label: b.name, group: "Remote", hint: "checkout", run: () => run({ op: "checkout", name: b.name.slice(remoteOf(b.name).length + 1) }) });
@@ -1105,6 +1142,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
             onJump={select}
             onCheckout={(name) => run({ op: "checkout", name })}
             onCreatePr={() => createPr()}
+            onAddSubmodule={addSubmodule}
             refMenu={refMenu}
             stashMenu={stashMenu}
             worktreeMenu={worktreeMenu}
