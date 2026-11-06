@@ -664,6 +664,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
   const refMenu = (ref: RefLabel): MenuItem[] => {
     if (ref.kind === "tag") {
       return [
+        { label: `Checkout ${ref.name}`, onSelect: () => run({ op: "checkout-detached", id: ref.name }, `Checked out ${ref.name}`) },
         {
           label: `Push tag ${ref.name}`,
           onSelect: () => {

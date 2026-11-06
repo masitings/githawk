@@ -3,6 +3,15 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check, CircleCheck, CircleDot, CircleX, Cloud, Laptop, Tag } from "lucide-react";
 import { api, date, lane, type CheckState, type Opened, type RefLabel, type Row } from "@/lib/api";
 import { WithMenu, type MenuItem } from "@/components/Menu";
+import { Menu as MenuPrimitive } from "@base-ui/react/menu";
+import {
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+} from "@/components/ui/dropdown-menu";
 import { avatarImage, avatarUrl } from "@/lib/avatars";
 
 const ROW = 28;
@@ -60,6 +69,7 @@ export function CheckBadge({ state }: { state: CheckState | undefined }) {
 export function Graph(p: Props) {
   const pages = useRef(new Map<number, Row[] | null>());
   const [lanes, setLanes] = useState(1);
+  const [more] = useState(() => MenuPrimitive.createHandle<RefLabel[]>());
   const [, rerender] = useReducer((x: number) => x + 1, 0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -285,6 +295,7 @@ export function Graph(p: Props) {
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <MoreRefs handle={more} refMenu={p.refMenu} />
       <div aria-hidden className="flex h-7 shrink-0 items-center overflow-hidden border-b bg-panel text-[11px] font-semibold tracking-[0.6px] whitespace-nowrap text-dim uppercase">
         <span className="shrink-0 pl-3" style={{ width: REFS_W }}>Branch / tag</span>
         <span className="shrink-0" style={{ width: graphW }}>Graph</span>
@@ -346,7 +357,7 @@ export function Graph(p: Props) {
                     {r.refs.length > 0 && (
                       <span aria-hidden className="absolute top-1/2 right-0 left-3 h-0.5 -translate-y-1/2" style={{ background: lane(r.color) }} />
                     )}
-                    <Pills row={r} refMenu={p.refMenu} onDropRef={p.onDropRef} onOpenRef={p.onOpenRef} checks={p.checks} />
+                    <Pills row={r} refMenu={p.refMenu} onDropRef={p.onDropRef} onOpenRef={p.onOpenRef} more={more} checks={p.checks} />
                   </div>
                   <div className="shrink-0" style={{ width: graphW }} />
                   <span className="min-w-40 flex-1 truncate pr-3">{r.summary}</span>
@@ -362,17 +373,57 @@ export function Graph(p: Props) {
   );
 }
 
+const iconOf = (r: RefLabel) => (r.kind === "tag" ? Tag : r.kind === "remote" ? Cloud : r.head ? Check : Laptop);
+
+// The root lives outside the rows: a Base UI menu nested in a row's ContextMenu.Trigger attaches to that context menu and never shows.
+type MoreHandle = MenuPrimitive.Handle<RefLabel[]>;
+
+function MoreRefs({ handle, refMenu }: { handle: MoreHandle; refMenu: (ref: RefLabel) => MenuItem[] }) {
+  return (
+    <MenuPrimitive.Root handle={handle}>
+      {({ payload }) => (
+        <DropdownMenuContent className="w-auto min-w-48">
+          {payload?.map((ref) => {
+            const I = iconOf(ref);
+            return (
+              <DropdownMenuSub key={`${ref.kind}:${ref.name}`}>
+                <DropdownMenuSubTrigger>
+                  <I className="size-3.5" aria-hidden />
+                  <span className="truncate">{ref.name}</span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="min-w-52">
+                  {refMenu(ref).map((it, i) =>
+                    it === "-" ? (
+                      <DropdownMenuSeparator key={i} />
+                    ) : (
+                      <DropdownMenuItem key={i} variant={it.destructive ? "destructive" : "default"} onClick={it.onSelect}>
+                        {it.label}
+                      </DropdownMenuItem>
+                    ),
+                  )}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            );
+          })}
+        </DropdownMenuContent>
+      )}
+    </MenuPrimitive.Root>
+  );
+}
+
 function Pills({
   row,
   refMenu,
   onDropRef,
   onOpenRef,
+  more,
   checks,
 }: {
   row: Row;
   refMenu: (ref: RefLabel) => MenuItem[];
   onDropRef: (source: RefLabel, target: RefLabel, at: { x: number; y: number }) => void;
   onOpenRef: (ref: RefLabel) => void;
+  more: MoreHandle;
   checks: Record<string, CheckState>;
 }) {
   if (!row.refs.length) return null;
@@ -381,7 +432,7 @@ function Pills({
   const rest = row.refs.filter(
     (r) => r !== main && !(tracked && r.kind === "remote" && r.name.endsWith(`/${main.name}`)),
   );
-  const Icon = main.kind === "tag" ? Tag : main.kind === "remote" ? Cloud : main.head ? Check : Laptop;
+  const Icon = iconOf(main);
   return (
     <>
       <span className="relative min-w-0" onContextMenu={(e) => e.stopPropagation()}>
@@ -410,9 +461,17 @@ function Pills({
         </WithMenu>
       </span>
       {rest.length > 0 && (
-        <span className="relative shrink-0 rounded-full border bg-background px-1.5 text-xs text-muted-foreground" title={rest.map((r) => r.name).join("\n")}>
+        <MenuPrimitive.Trigger
+          handle={more}
+          payload={rest}
+          aria-label={`${rest.length} more: ${rest.map((r) => r.name).join(", ")}`}
+          title={rest.map((r) => r.name).join("\n")}
+          className="relative shrink-0 rounded-full border bg-background px-1.5 text-xs text-muted-foreground hover:text-foreground data-popup-open:text-foreground"
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
           +{rest.length}
-        </span>
+        </MenuPrimitive.Trigger>
       )}
     </>
   );
