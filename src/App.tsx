@@ -4,7 +4,7 @@ import { open as pickFolder } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Toaster, toast } from "sonner";
-import { Check, ChevronDown, FolderGit2, FolderOpen, GitBranchPlus, Plus, Settings, UserRound, X, DownloadCloud } from "lucide-react";
+import { Bug, Check, ChevronDown, FolderGit2, FolderOpen, GitBranchPlus, Plus, Settings, UserRound, X, DownloadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -13,7 +13,7 @@ import { ask, PromptHost } from "@/lib/prompt";
 import { RepoView } from "@/components/RepoView";
 import { PROVIDERS, SettingsView, type SettingsSection } from "@/components/SettingsView";
 import { CloneDialog } from "@/components/CloneDialog";
-import { checkForUpdate } from "@/lib/update";
+import { checkForUpdate, reportProblem } from "@/lib/update";
 import { account, actionFor, activeProfile, setSettings, useSettings } from "@/lib/settings";
 
 type Tab = { root: string; alias: string };
@@ -235,6 +235,9 @@ export default function App() {
               <DropdownMenuItem onClick={() => setSettingsOpen(true, "profiles")}>Manage profiles…</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <Button variant="ghost" size="icon-sm" aria-label="Report a problem" title="Report a problem" className="mb-1.5 text-muted-foreground" onClick={() => reportProblem()}>
+            <Bug />
+          </Button>
           <Button variant="ghost" size="icon-sm" aria-label="Settings" aria-pressed={settingsOpen} className="mb-1.5 text-muted-foreground" onClick={() => setSettingsOpen(!settingsOpen)}>
             <Settings />
           </Button>

@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Copy, ExternalLink, KeyRound, Upload, Pencil, Plus, Search, Settings as Gear, ShieldCheck, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { appVersion, checkForUpdate, reportProblem } from "@/lib/update";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { api, type GpgKey, type Provider, type Server, type SshKey } from "@/lib/api";
@@ -184,7 +185,14 @@ export function SettingsView({ initial = "general", onClose }: { initial?: Setti
                     Report a problem
                   </Button>
                 </Row>
+                <Row label="Open source licenses" text="GitHawk is built on open source software. These are the licenses of the packages it includes.">
+                  <Licenses />
+                </Row>
               </Card>
+              <H3>Contributors</H3>
+              <Contributors />
+              <H3>Special thanks</H3>
+              <Thanks />
             </>
           )}
 
@@ -404,6 +412,128 @@ function H3({ children }: { children: ReactNode }) {
 
 function Card({ children }: { children: ReactNode }) {
   return <div className="overflow-hidden rounded-[10px] border bg-panel">{children}</div>;
+}
+
+const KINDS: Record<string, string> = {
+  bug: "🐛 Bug reports",
+  design: "🎨 Design",
+  doc: "📖 Documentation",
+  ideas: "🤔 Ideas",
+  translation: "🌍 Translation",
+  test: "⚠️ Tests",
+  review: "👀 Reviews",
+  userTesting: "📓 User testing",
+  maintenance: "🚧 Maintenance",
+  question: "💬 Answering questions",
+  infra: "🚇 Infrastructure",
+  security: "🛡️ Security",
+  a11y: "♿️ Accessibility",
+  financial: "💵 Financial support",
+  promotion: "📣 Promotion",
+};
+
+function Thanks() {
+  type Person = { login: string; name?: string; avatar_url: string; profile?: string; contributions: string[] };
+  const [list, setList] = useState<Person[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    api.thanks().then((l) => setList(l as Person[]), () => setFailed(true));
+  }, []);
+  const shown = list?.filter((p) => p.contributions.some((c) => c !== "code"));
+  return (
+    <Card>
+      <div className="flex flex-wrap gap-2 p-3">
+        {shown?.map((p) => {
+          const kinds = p.contributions.filter((c) => c !== "code");
+          return (
+            <button
+              key={p.login}
+              className="flex items-center gap-2 rounded-full border bg-panel-2 py-1 pr-3 pl-1 text-[12.5px] hover:bg-raised"
+              title={kinds.map((k) => KINDS[k] ?? k).join("\n")}
+              onClick={() => openUrl(p.profile || `https://github.com/${p.login}`)}
+            >
+              <img src={`${p.avatar_url}${p.avatar_url.includes("?") ? "&" : "?"}s=48`} alt="" className="size-6 rounded-full" />
+              {p.name || p.login}
+              <span aria-label={kinds.map((k) => KINDS[k] ?? k).join(", ")}>{kinds.map((k) => (KINDS[k] ?? "✨").split(" ")[0]).join("")}</span>
+            </button>
+          );
+        })}
+        {!list && <span className="px-1 text-xs text-dim">{failed ? "Couldn't load the list. Check your connection." : "Loading…"}</span>}
+        {shown?.length === 0 && <span className="px-1 text-xs text-dim">No one yet. Report a bug or share an idea to be the first.</span>}
+      </div>
+      <div className="border-t px-4 py-2.5 text-xs text-dim">
+        Design, bug reports, translations and ideas count too.{" "}
+        <button className="text-[var(--lane-1)] hover:underline" onClick={() => openUrl("https://github.com/masitings/githawk/blob/main/CONTRIBUTING.md#getting-credited")}>
+          How to get credited
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+function Licenses() {
+  const [text, setText] = useState<string | null>(null);
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() =>
+          fetch("/third-party-licenses.txt")
+            .then((r) => (r.ok ? r.text() : Promise.reject()))
+            .then(setText, () => toast.error("License list is only included in release builds"))
+        }
+      >
+        View licenses
+      </Button>
+      <Dialog open={text !== null} onOpenChange={(o) => !o && setText(null)}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Open source licenses</DialogTitle>
+          </DialogHeader>
+          <pre tabIndex={0} className="max-h-[65vh] overflow-auto rounded-md border bg-panel-2 p-3 font-mono text-[11.5px] leading-[17px] whitespace-pre-wrap">
+            {text}
+          </pre>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function Contributors() {
+  const [list, setList] = useState<Awaited<ReturnType<typeof api.contributors>> | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    api.contributors().then(setList, () => setFailed(true));
+  }, []);
+  return (
+    <Card>
+      <div className="flex flex-wrap gap-2 p-3">
+        {list?.slice(0, 10).map((c) => (
+          <button
+            key={c.login}
+            className="flex items-center gap-2 rounded-full border bg-panel-2 py-1 pr-3 pl-1 text-[12.5px] hover:bg-raised"
+            title={`${c.commits} commit${c.commits === 1 ? "" : "s"}`}
+            onClick={() => openUrl(c.url)}
+          >
+            <img src={`${c.avatar}&s=48`} alt="" className="size-6 rounded-full" />
+            {c.login}
+          </button>
+        ))}
+        {!list && <span className="px-1 text-xs text-dim">{failed ? "Couldn't load contributors. Check your connection." : "Loading…"}</span>}
+      </div>
+      <div className="flex gap-4 border-t px-4 py-2.5 text-xs">
+        {list && list.length > 10 && (
+          <button className="text-[var(--lane-1)] hover:underline" onClick={() => openUrl("https://github.com/masitings/githawk/graphs/contributors")}>
+            See all {list.length} contributors on GitHub
+          </button>
+        )}
+        <button className="text-[var(--lane-1)] hover:underline" onClick={() => openUrl("https://github.com/masitings/githawk/blob/main/CONTRIBUTING.md")}>
+          Become a contributor
+        </button>
+      </div>
+    </Card>
+  );
 }
 
 function Row({ label, text, children }: { label: string; text?: string; children: ReactNode }) {

@@ -1386,3 +1386,48 @@ mod tests {
         assert_eq!(enc("group/sub repo"), "group%2Fsub%20repo");
     }
 }
+
+#[derive(Serialize)]
+pub struct Contributor {
+    login: String,
+    avatar: String,
+    url: String,
+    commits: u64,
+}
+
+/// GitHawk's own contributors, from the public GitHub API without a token.
+#[tauri::command]
+pub async fn githawk_contributors() -> Res<Vec<Contributor>> {
+    blocking(|| {
+        let body = send(
+            client()
+                .get("https://api.github.com/repos/masitings/githawk/contributors?per_page=100"),
+        )?;
+        Ok(body
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|c| c["type"] == "User")
+            .map(|c| Contributor {
+                login: s(&c["login"]),
+                avatar: s(&c["avatar_url"]),
+                url: s(&c["html_url"]),
+                commits: c["contributions"].as_u64().unwrap_or(0),
+            })
+            .collect())
+    })
+    .await
+}
+
+/// People credited in `.all-contributorsrc`, including non-code work like design and bug reports.
+#[tauri::command]
+pub async fn githawk_thanks() -> Res<Value> {
+    blocking(|| {
+        let body =
+            send(client().get(
+                "https://raw.githubusercontent.com/masitings/githawk/main/.all-contributorsrc",
+            ))?;
+        Ok(body["contributors"].clone())
+    })
+    .await
+}

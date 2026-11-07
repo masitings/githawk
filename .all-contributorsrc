@@ -1,0 +1,19 @@
+{
+  "projectName": "githawk",
+  "projectOwner": "masitings",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "files": [],
+  "imageSize": 64,
+  "commit": false,
+  "contributorsPerLine": 7,
+  "contributors": [
+    {
+      "login": "masitings",
+      "name": "Rafi Bagaskara Halilintar",
+      "avatar_url": "https://avatars.githubusercontent.com/u/29356430?v=4",
+      "profile": "https://github.com/masitings",
+      "contributions": ["code", "design", "doc", "maintenance"]
+    }
+  ]
+}

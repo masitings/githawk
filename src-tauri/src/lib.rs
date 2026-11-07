@@ -596,6 +596,8 @@ pub fn run() {
             hosting::hosting_delete_token,
             hosting::hosting_has_token,
             hosting::hosting_repos,
+            hosting::githawk_contributors,
+            hosting::githawk_thanks,
             hosting::hosting_detect,
             hosting::hosting_prs,
             hosting::hosting_create_pr,

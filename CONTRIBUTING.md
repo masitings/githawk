@@ -16,6 +16,12 @@ Please remove tokens, private remote URLs and file contents you don't want publi
 
 Open an issue first for anything bigger than a small fix, so we can agree on the approach before you spend time on it. GitHawk is local-first: features that need a GitHawk account, a server or telemetry won't be accepted.
 
+## Getting credited
+
+Code contributors appear automatically in Settings → About. Other help counts too: bug reports, design, translations, documentation, testing and ideas. These are listed in [`.all-contributorsrc`](.all-contributorsrc) using the [all-contributors](https://allcontributors.org/docs/en/emoji-key) categories and shown under Special thanks in the app.
+
+To be added, open a pull request that adds yourself to that file, or ask in your issue or pull request and a maintainer will add you.
+
 ## Setting up
 
 You need [git](https://git-scm.com), [Rust](https://rustup.rs) (stable, edition 2024), [Node.js](https://nodejs.org) 24, [pnpm](https://pnpm.io) and the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.
