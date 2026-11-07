@@ -46,6 +46,14 @@ Download the installer for your system from [Releases](https://github.com/masiti
 
 The macOS build is signed and notarized. The Windows build is not signed yet; if SmartScreen warns, choose **More info → Run anyway**.
 
+On macOS you can also use [Homebrew](https://brew.sh):
+
+```bash
+brew tap masitings/tap
+brew trust masitings/tap
+brew install --cask githawk
+```
+
 ## Build from source
 
 You need [Rust](https://rustup.rs), [Node.js](https://nodejs.org), [pnpm](https://pnpm.io) and the [Tauri prerequisites](https://tauri.app/start/prerequisites/).

@@ -1,0 +1,28 @@
+name: Homebrew
+
+# Runs on publish, not on the draft the Release workflow creates: draft assets aren't public yet.
+on:
+  release:
+    types: [published]
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update the cask in masitings/homebrew-tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="${TAG#v}"
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/GitHawk_${version}"
+          arm=$(curl -fsSL "${base}_aarch64.dmg" | sha256sum | cut -d' ' -f1)
+          intel=$(curl -fsSL "${base}_x64.dmg" | sha256sum | cut -d' ' -f1)
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/masitings/homebrew-tap" tap
+          cd tap
+          perl -pi -e "s/^  version \".*\"/  version \"${version}\"/; s/arm:   \"[0-9a-f]+\"/arm:   \"${arm}\"/; s/intel: \"[0-9a-f]+\"/intel: \"${intel}\"/" Casks/githawk.rb
+          git diff --quiet && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "githawk ${version}"
+          git push
