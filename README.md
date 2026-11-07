@@ -146,4 +146,4 @@ GitHawk has no telemetry and no server. It talks only to the git remotes you use
 
 ## License
 
-A license has not been chosen yet. Until one is added, the code is visible but not licensed for reuse.
+Licensed under the [Apache License 2.0](LICENSE).
