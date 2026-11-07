@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { open as pickFolder } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { Toaster, toast } from "sonner";
 import { Check, ChevronDown, FolderGit2, FolderOpen, GitBranchPlus, Plus, Settings, UserRound, X, DownloadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,12 @@ export default function App() {
   const profile = activeProfile(prefs);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [goto, setGoto] = useState<{ root: string; ref: string; n: number } | null>(null);
+  const [gitOk, setGitOk] = useState<boolean | null>(null);
+  const checkGit = () => api.gitVersion().then((v) => setGitOk(!!v), () => setGitOk(false));
+
+  useEffect(() => {
+    checkGit();
+  }, []);
 
   useEffect(() => {
     if (!import.meta.env.DEV) checkForUpdate();
@@ -160,6 +167,8 @@ export default function App() {
     setTabs(upd);
     setRecents(upd);
   }
+
+  if (gitOk === false) return <MissingGit onRetry={checkGit} />;
 
   return (
     <TooltipProvider>
@@ -361,5 +370,40 @@ function WelcomeSide({ onSettings }: { onSettings: (page: SettingsSection) => vo
         </div>
       </section>
     </div>
+  );
+}
+
+function MissingGit({ onRetry }: { onRetry: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const ua = navigator.userAgent;
+  const how = /Windows/.test(ua)
+    ? ["Install Git for Windows, or run this in a terminal:", "winget install --id Git.Git -e"]
+    : /Mac/.test(ua)
+      ? ["Install the Xcode Command Line Tools, or Git from Homebrew:", "xcode-select --install"]
+      : ["Install Git with your package manager, for example:", "sudo apt install git"];
+  return (
+    <main className="flex h-screen flex-col items-center justify-center gap-4 bg-background p-6 text-center text-foreground">
+      <FolderGit2 className="size-10 text-muted-foreground" aria-hidden />
+      <h1 className="text-lg font-semibold">Git is not installed</h1>
+      <p className="max-w-md text-sm text-muted-foreground">
+        GitHawk runs the git on your computer, so hooks, signing and credentials work the same as in your terminal. {how[0]}
+      </p>
+      <code className="rounded-md border bg-panel-2 px-3 py-1.5 font-mono text-[12.5px] select-all">{how[1]}</code>
+      <div className="flex gap-2">
+        <Button variant="outline" onClick={() => openUrl("https://git-scm.com/downloads")}>
+          Download Git
+        </Button>
+        <Button
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            onRetry().finally(() => setBusy(false));
+          }}
+        >
+          Check again
+        </Button>
+      </div>
+      <p className="max-w-md text-xs text-dim">Already installed? Make sure git is on your PATH, then check again.</p>
+    </main>
   );
 }

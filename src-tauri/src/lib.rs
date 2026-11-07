@@ -339,6 +339,10 @@ async fn git_version() -> Res<String> {
             .arg("--version")
             .output()
             .map_err(|e| format!("git not found: {e}"))?;
+        // macOS ships a /usr/bin/git stub that fails until Command Line Tools are installed.
+        if !out.status.success() {
+            return Err("git not found".into());
+        }
         Ok(String::from_utf8_lossy(&out.stdout)
             .trim()
             .trim_start_matches("git version ")
