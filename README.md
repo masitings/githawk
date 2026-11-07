@@ -4,7 +4,7 @@ A fast, local-first Git desktop client built with Rust and Tauri. Every feature 
 
 ![Commit graph with branches, pull request checks and commit details](docs/screenshots/graph.png)
 
-> GitHawk is in early development (v0.1). It has not been released as an installer yet; build it from source to try it.
+> GitHawk is in early development (v0.1). Download an installer from [Releases](https://github.com/masitings/githawk/releases) or build it from source.
 
 ## Why GitHawk
 
@@ -138,7 +138,11 @@ pnpm test
 | `crates/githawk-core/` | Git library: graph layout, repository reads (libgit2), the allowlisted operations that run the git CLI, the undo log, interactive rebase and line staging |
 | `src-tauri/` | Tauri app: IPC commands, file watcher, terminal, hosting providers, AI, SSH/GPG keys |
 | `src/` | React 19 + TypeScript UI, styled with Tailwind CSS v4 and shadcn/ui |
-| `docs/` | Product requirements and screenshots |
+| `docs/` | [Architecture](docs/ARCHITECTURE.md), [releasing](docs/RELEASING.md), product requirements and screenshots |
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks and how to add a git operation.
 
 ## Privacy
 
