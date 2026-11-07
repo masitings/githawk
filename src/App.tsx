@@ -13,6 +13,7 @@ import { ask, PromptHost } from "@/lib/prompt";
 import { RepoView } from "@/components/RepoView";
 import { PROVIDERS, ProfilePhoto, SettingsView, type SettingsSection } from "@/components/SettingsView";
 import { CloneDialog } from "@/components/CloneDialog";
+import { Pet } from "@/components/Pet";
 import { checkForUpdate, reportProblem } from "@/lib/update";
 import { account, actionFor, activeProfile, setSettings, useSettings } from "@/lib/settings";
 
@@ -318,6 +319,7 @@ export default function App() {
         )}
       </div>
       <CloneDialog open={cloneOpen} onOpenChange={setCloneOpen} onClone={cloneFrom} />
+      {prefs.pet.enabled && prefs.pet.id && <Pet onSettings={() => setSettingsOpen(true, "pet")} />}
       <PromptHost />
       <Toaster richColors theme="system" position="bottom-right" />
     </TooltipProvider>

@@ -65,6 +65,7 @@ import { AgentsView } from "@/components/AgentsView";
 import { TerminalPanel } from "@/components/TerminalPanel";
 import { Palette, type PaletteItem } from "@/components/Palette";
 import { reportProblem } from "@/lib/update";
+import { petMood } from "@/lib/pet";
 
 const LONG = new Set(["fetch", "pull", "push", "delete-remote-branch", "push-tag", "lfs-pull", "submodule-add", "submodule-update"]);
 const KEEPS_REFS = new Set(["stage", "unstage", "discard"]);
@@ -293,13 +294,18 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
   const run = useCallback(
     async (op: Op, label?: string): Promise<boolean> => {
       const long = LONG.has(op.op);
-      if (long) setBusy(label ?? op.op);
+      if (long) {
+        setBusy(label ?? op.op);
+        petMood("busy");
+      }
       try {
         await api.run(root, op);
         if (label) toast.success(label);
+        petMood("done");
         return true;
       } catch (e) {
         const msg = String(e);
+        petMood("failed");
         if (op.op === "push" && !op.force && /rejected|non-fast-forward|fetch first/i.test(msg)) {
           setBusy(null);
           const ok = await confirm(

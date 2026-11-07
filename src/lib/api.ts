@@ -61,6 +61,8 @@ export type Refs = {
   tags: Named[];
   stashes: Stash[];
 };
+export type PetInfo = { id: string; displayName: string; description: string };
+
 export type Target = { kind: "commit"; id: string } | { kind: "range"; from: string; to: string } | { kind: "staged" } | { kind: "unstaged" };
 export type Mode = "stage" | "unstage" | "discard";
 
@@ -176,6 +178,9 @@ export const api = {
   gitVersion: () => invoke<string>("git_version"),
   contributors: () => invoke<{ login: string; avatar: string; url: string; commits: number }[]>("githawk_contributors"),
   thanks: () => invoke<unknown[]>("githawk_thanks"),
+  pets: () => invoke<PetInfo[]>("pets_list"),
+  petSprite: (id: string) => invoke<ArrayBuffer>("pet_sprite", { id }),
+  petInstall: (source: string) => invoke<string>("pet_install", { source }),
   sshKeys: () => invoke<SshKey[]>("ssh_keys"),
   sshGenerate: (name: string, email: string) => invoke<SshKey>("ssh_generate", { name, email }),
   gpgKeys: () => invoke<GpgKey[]>("gpg_keys"),

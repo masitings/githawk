@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { appVersion, checkForUpdate, reportProblem } from "@/lib/update";
 import { gravatarUrl } from "@/lib/avatars";
+import { addPet, browsePets, choosePet, install, usePets } from "@/lib/pet";
+import { open as pickFile } from "@tauri-apps/plugin-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { api, type GpgKey, type Provider, type Server, type SshKey } from "@/lib/api";
 import { ACTIONS, DEFAULT_SHORTCUTS, account, activeProfile, comboOf, getSettings, prettyCombo, setSettings, useSettings, type Profile, type TerminalPrefs } from "@/lib/settings";
@@ -54,6 +56,7 @@ const SECTIONS = [
   ["git", "Git", "default branch pull rebase prune upstream line endings autocrlf sign version"],
   ["ai", "AI assistant", "anthropic openai ollama model key commit message explain changelog"],
   ["terminal", "Terminal", "in-app terminal font size line height cursor blink dim unfocused monospace"],
+  ["pet", "Pet", "pet companion codex pets animated mascot size"],
   ["shortcuts", "Keyboard shortcuts", "keys hotkeys keyboard"],
 ] as const;
 export type SettingsSection = (typeof SECTIONS)[number][0];
@@ -346,6 +349,8 @@ export function SettingsView({ initial = "general", onClose }: { initial?: Setti
 
           {section === "terminal" && <TerminalSection />}
 
+          {section === "pet" && <PetSection />}
+
           {section === "ai" && (
             <>
               <Title title="AI assistant" text="Bring your own key or run a local model." />
@@ -402,6 +407,73 @@ export function SettingsView({ initial = "general", onClose }: { initial?: Setti
 }
 
 const FONTS = ["JetBrains Mono Variable", "SF Mono", "Menlo", "Monaco", "Cascadia Code", "Cascadia Mono", "Consolas", "Fira Code", "Source Code Pro", "Hack", "Ubuntu Mono", "DejaVu Sans Mono", "Courier New"];
+
+function PetSection() {
+  const pet = useSettings().pet;
+  const pets = usePets();
+  const set = (patch: Partial<typeof pet>) => setSettings({ pet: { ...getSettings().pet, ...patch } });
+  return (
+    <>
+      <Title title="Pet" text="An animated companion that keeps you company and reacts when fetches, pushes and other git operations run, succeed or fail." />
+      <H3>Your pet</H3>
+      <Card>
+        <Row label="Show pet" text="Drag it anywhere in the window. Right-click it for quick options.">
+          <Switch label="Show pet" checked={pet.enabled && !!pet.id} onChange={(v) => (v && !pet.id && pets[0] ? choosePet(pets[0].id) : set({ enabled: v }))} />
+        </Row>
+        <Row label="Pet" text={pets.length ? undefined : "No pets yet. Add one below."}>
+          <select aria-label="Pet" className={`${control} w-50`} value={pet.id} disabled={!pets.length} onChange={(e) => choosePet(e.currentTarget.value)}>
+            {!pet.id && <option value="">Choose a pet</option>}
+            {pets.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.displayName}
+              </option>
+            ))}
+          </select>
+        </Row>
+        <Row label="Size" text={`${pet.size}px tall`}>
+          <input
+            type="range"
+            aria-label="Pet size"
+            min={60}
+            max={320}
+            step={10}
+            value={pet.size}
+            onChange={(e) => set({ size: Number(e.currentTarget.value) })}
+            className="w-50 accent-primary"
+          />
+        </Row>
+        <Row label="Position" text="Move it back to the bottom-right corner">
+          <Button variant="outline" size="sm" onClick={() => set({ x: 24, y: 40 })}>
+            Reset position
+          </Button>
+        </Row>
+      </Card>
+      <H3>Get more pets</H3>
+      <Card>
+        <Row label="Add from codex-pets.net" text="Paste a pet link or id. Pets are saved in ~/.codex/pets, so Codex can use them too.">
+          <Button variant="outline" size="sm" onClick={() => addPet()}>
+            Add pet…
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => browsePets()}>
+            Browse pets
+          </Button>
+        </Row>
+        <Row label="Add from a file" text="A .codex-pet.zip with pet.json and a spritesheet">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              const file = await pickFile({ filters: [{ name: "Pet package", extensions: ["zip"] }] });
+              if (typeof file === "string") install(file);
+            }}
+          >
+            Choose file…
+          </Button>
+        </Row>
+      </Card>
+    </>
+  );
+}
 
 function TerminalSection() {
   const t = useSettings().terminal;

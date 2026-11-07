@@ -1,6 +1,7 @@
 mod ai;
 mod hosting;
 mod keys;
+mod pets;
 mod term;
 
 use std::collections::HashMap;
@@ -598,6 +599,9 @@ pub fn run() {
             hosting::hosting_repos,
             hosting::githawk_contributors,
             hosting::githawk_thanks,
+            pets::pets_list,
+            pets::pet_sprite,
+            pets::pet_install,
             hosting::hosting_detect,
             hosting::hosting_prs,
             hosting::hosting_create_pr,
