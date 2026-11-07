@@ -418,7 +418,7 @@ function PetSection() {
       <H3>Your pet</H3>
       <Card>
         <Row label="Show pet" text="Drag it anywhere in the window. Right-click it for quick options.">
-          <Switch label="Show pet" checked={pet.enabled && !!pet.id} onChange={(v) => (v && !pet.id && pets[0] ? choosePet(pets[0].id) : set({ enabled: v }))} />
+          <Switch label="Show pet" checked={pet.enabled && !!pet.id} onChange={(v) => (!v ? set({ enabled: false }) : pets.some((p) => p.id === pet.id) ? set({ enabled: true }) : pets[0] ? choosePet(pets[0].id) : addPet())} />
         </Row>
         <Row label="Pet" text={pets.length ? undefined : "No pets yet. Add one below."}>
           <select aria-label="Pet" className={`${control} w-50`} value={pet.id} disabled={!pets.length} onChange={(e) => choosePet(e.currentTarget.value)}>
