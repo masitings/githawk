@@ -23,3 +23,12 @@ export function avatarImage(url: string, onLoad: () => void): HTMLImageElement |
   images.set(url, img);
   return null;
 }
+
+/** Gravatar photo for an email; `d=404` makes a missing photo fail so callers can fall back. */
+export async function gravatarUrl(email: string, size = 64): Promise<string | undefined> {
+  const e = email.trim().toLowerCase();
+  if (!e.includes("@")) return undefined;
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(e));
+  const hex = [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `https://gravatar.com/avatar/${hex}?s=${size}&d=404`;
+}

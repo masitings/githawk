@@ -11,7 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { api, type Opened } from "@/lib/api";
 import { ask, PromptHost } from "@/lib/prompt";
 import { RepoView } from "@/components/RepoView";
-import { PROVIDERS, SettingsView, type SettingsSection } from "@/components/SettingsView";
+import { PROVIDERS, ProfilePhoto, SettingsView, type SettingsSection } from "@/components/SettingsView";
 import { CloneDialog } from "@/components/CloneDialog";
 import { checkForUpdate, reportProblem } from "@/lib/update";
 import { account, actionFor, activeProfile, setSettings, useSettings } from "@/lib/settings";
@@ -220,7 +220,9 @@ export default function App() {
                 <button className="mb-[7px] ml-auto flex h-[26px] shrink-0 items-center gap-1.5 rounded-full border bg-panel-2 px-2.5 text-xs hover:bg-raised focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none" />
               }
             >
-              <UserRound className="size-3.5 text-muted-foreground" aria-hidden />
+              <ProfilePhoto email={profile.gitEmail} className="-ml-1.5 size-[18px]">
+                <UserRound className="size-3.5 text-muted-foreground" />
+              </ProfilePhoto>
               Profile: {profile.name}
               <ChevronDown className="size-3 text-muted-foreground" aria-hidden />
             </DropdownMenuTrigger>

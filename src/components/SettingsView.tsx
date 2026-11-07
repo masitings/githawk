@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { appVersion, checkForUpdate, reportProblem } from "@/lib/update";
+import { gravatarUrl } from "@/lib/avatars";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { api, type GpgKey, type Provider, type Server, type SshKey } from "@/lib/api";
 import { ACTIONS, DEFAULT_SHORTCUTS, account, activeProfile, comboOf, getSettings, prettyCombo, setSettings, useSettings, type Profile, type TerminalPrefs } from "@/lib/settings";
@@ -203,9 +204,9 @@ export function SettingsView({ initial = "general", onClose }: { initial?: Setti
               <div className="mt-5 flex flex-col gap-2">
                 {s.profiles.map((p) => (
                   <div key={p.id} className="flex items-center gap-3 rounded-[10px] border bg-panel px-4 py-3">
-                    <span aria-hidden className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-[var(--lane-0)] bg-raised text-xs font-semibold">
+                    <ProfilePhoto email={p.gitEmail} className="size-8 border-2 border-[var(--lane-0)] text-xs">
                       {(p.name.trim()[0] ?? "?").toUpperCase()}
-                    </span>
+                    </ProfilePhoto>
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-semibold">{p.name || "Untitled profile"}</div>
                       <div className="truncate text-xs text-dim">{p.gitEmail || "Uses git config identity"}</div>
@@ -481,6 +482,25 @@ function TerminalSection() {
         </Row>
       </Card>
     </>
+  );
+}
+
+/** Gravatar for `email`, or `children` (initials) when there is none or it fails to load. */
+export function ProfilePhoto({ email, className, children }: { email: string; className: string; children: ReactNode }) {
+  const [url, setUrl] = useState<string>();
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    setFailed(false);
+    let live = true;
+    gravatarUrl(email, 96).then((u) => live && setUrl(u));
+    return () => {
+      live = false;
+    };
+  }, [email]);
+  return (
+    <span aria-hidden className={`inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-raised font-semibold ${className}`}>
+      {url && !failed ? <img src={url} alt="" className="size-full object-cover" onError={() => setFailed(true)} /> : children}
+    </span>
   );
 }
 
