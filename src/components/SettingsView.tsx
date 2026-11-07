@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Copy, ExternalLink, KeyRound, Upload, Pencil, Plus, Search, Settings as Gear, ShieldCheck, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { appVersion, checkForUpdate } from "@/lib/update";
+import { appVersion, checkForUpdate, reportProblem } from "@/lib/update";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { api, type GpgKey, type Provider, type Server, type SshKey } from "@/lib/api";
 import { ACTIONS, DEFAULT_SHORTCUTS, account, activeProfile, comboOf, getSettings, prettyCombo, setSettings, useSettings, type Profile } from "@/lib/settings";
@@ -45,7 +45,7 @@ const AI_KEYS: Record<"anthropic" | "openai", Keyed> = {
 };
 
 const SECTIONS = [
-  ["general", "General", "theme appearance dark light fetch background"],
+  ["general", "General", "theme appearance dark light fetch background update about report problem bug issue"],
   ["profiles", "Profiles", "author name email signing key identity azure organisation"],
   ["integrations", "Integrations", "github gitlab bitbucket azure token server enterprise self-hosted pull request merge checks ci"],
   ["keys", "SSH, GPG and HTTPS", "ssh key generate gpg signing credential helper https password"],
@@ -172,11 +172,16 @@ export function SettingsView({ initial = "general", onClose }: { initial?: Setti
                   </select>
                 </Row>
               </Card>
-              <H3>Updates</H3>
+              <H3>About</H3>
               <Card>
                 <Row label={`GitHawk ${version}`} text="Checks GitHub Releases on launch. Updates are signed and verified before installing.">
                   <Button variant="outline" size="sm" onClick={() => checkForUpdate(true)}>
                     Check for updates
+                  </Button>
+                </Row>
+                <Row label="Report a problem" text="GitHawk has no telemetry. Opens a GitHub issue with your app, OS and git versions filled in.">
+                  <Button variant="outline" size="sm" onClick={() => reportProblem()}>
+                    Report a problem
                   </Button>
                 </Row>
               </Card>

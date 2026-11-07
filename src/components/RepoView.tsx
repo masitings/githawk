@@ -64,6 +64,7 @@ import { PrView } from "@/components/PrView";
 import { AgentsView } from "@/components/AgentsView";
 import { TerminalPanel } from "@/components/TerminalPanel";
 import { Palette, type PaletteItem } from "@/components/Palette";
+import { reportProblem } from "@/lib/update";
 
 const LONG = new Set(["fetch", "pull", "push", "delete-remote-branch", "push-tag", "lfs-pull", "submodule-add", "submodule-update"]);
 const KEEPS_REFS = new Set(["stage", "unstage", "discard"]);
@@ -1067,6 +1068,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
       { id: "a:worktree", label: "Add worktree…", group: "Action", run: () => addWorktree() },
       { id: "a:submodule", label: "Add submodule…", group: "Action", run: () => addSubmodule() },
       { id: "a:remote", label: "Add remote…", group: "Action", run: () => addRemote() },
+      { id: "a:report", label: "Report a problem…", group: "Action", run: () => reportProblem() },
       ...(flow
         ? (["feature", "release", "hotfix"] as const).map((k) => ({ id: `a:flow-${k}`, label: `Gitflow: start ${k}…`, group: "Action", run: () => flowStart(k) }))
         : [{ id: "a:flow-init", label: "Gitflow: initialise…", group: "Action", run: flowInit }]),
