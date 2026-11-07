@@ -57,6 +57,12 @@ pnpm tauri dev
 
 `pnpm tauri build` produces an installer. See [CONTRIBUTING.md](CONTRIBUTING.md) for tests and checks, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the code is organized.
 
+## Found a problem?
+
+GitHawk has no telemetry and no crash reporting. It never sends usage data, errors or crashes anywhere, so we only learn about a problem when you tell us.
+
+If something breaks, looks wrong or is missing, please [open an issue](https://github.com/masitings/githawk/issues/new). Include your OS, the GitHawk version, what you did and what happened. If a git operation failed, copy the failing command from the command log (⌘⇧R). Remove tokens, private URLs and anything else you don't want public before posting.
+
 ## License
 
 [Apache License 2.0](LICENSE)
