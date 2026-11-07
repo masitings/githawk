@@ -22,6 +22,16 @@ export type Settings = {
   servers: Server[];
   prMerge: MergeMethod;
   showChecks: boolean;
+  terminal: TerminalPrefs;
+};
+
+export type TerminalPrefs = {
+  font: string;
+  fontSize: number;
+  lineHeight: number;
+  cursor: "block" | "bar" | "underline";
+  blink: boolean;
+  dimUnfocused: boolean;
 };
 
 export const ACTIONS: Record<string, string> = {
@@ -72,6 +82,7 @@ const DEFAULT: Settings = {
   servers: [],
   prMerge: "merge",
   showChecks: true,
+  terminal: { font: "JetBrains Mono Variable", fontSize: 12, lineHeight: 1, cursor: "block", blink: true, dimUnfocused: false },
 };
 
 const KEY = "githawk.settings";
@@ -79,7 +90,7 @@ const KEY = "githawk.settings";
 function read(): Settings {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) ?? "null");
-    return s ? { ...DEFAULT, ...s, shortcuts: { ...DEFAULT_SHORTCUTS, ...s.shortcuts }, ai: { ...DEFAULT.ai, ...s.ai } } : DEFAULT;
+    return s ? { ...DEFAULT, ...s, shortcuts: { ...DEFAULT_SHORTCUTS, ...s.shortcuts }, ai: { ...DEFAULT.ai, ...s.ai }, terminal: { ...DEFAULT.terminal, ...s.terminal } } : DEFAULT;
   } catch {
     return DEFAULT;
   }

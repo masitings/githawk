@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { appVersion, checkForUpdate, reportProblem } from "@/lib/update";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { api, type GpgKey, type Provider, type Server, type SshKey } from "@/lib/api";
-import { ACTIONS, DEFAULT_SHORTCUTS, account, activeProfile, comboOf, getSettings, prettyCombo, setSettings, useSettings, type Profile } from "@/lib/settings";
+import { ACTIONS, DEFAULT_SHORTCUTS, account, activeProfile, comboOf, getSettings, prettyCombo, setSettings, useSettings, type Profile, type TerminalPrefs } from "@/lib/settings";
 import { ask, confirm } from "@/lib/prompt";
 
 type Keyed = { id: string; name: string; url: string; hint: string };
@@ -52,6 +52,7 @@ const SECTIONS = [
   ["keys", "SSH, GPG and HTTPS", "ssh key generate gpg signing credential helper https password"],
   ["git", "Git", "default branch pull rebase prune upstream line endings autocrlf sign version"],
   ["ai", "AI assistant", "anthropic openai ollama model key commit message explain changelog"],
+  ["terminal", "Terminal", "in-app terminal font size line height cursor blink dim unfocused monospace"],
   ["shortcuts", "Keyboard shortcuts", "keys hotkeys keyboard"],
 ] as const;
 export type SettingsSection = (typeof SECTIONS)[number][0];
@@ -342,6 +343,8 @@ export function SettingsView({ initial = "general", onClose }: { initial?: Setti
             </>
           )}
 
+          {section === "terminal" && <TerminalSection />}
+
           {section === "ai" && (
             <>
               <Title title="AI assistant" text="Bring your own key or run a local model." />
@@ -394,6 +397,90 @@ export function SettingsView({ initial = "general", onClose }: { initial?: Setti
         </div>
       </main>
     </div>
+  );
+}
+
+const FONTS = ["JetBrains Mono Variable", "SF Mono", "Menlo", "Monaco", "Cascadia Code", "Cascadia Mono", "Consolas", "Fira Code", "Source Code Pro", "Hack", "Ubuntu Mono", "DejaVu Sans Mono", "Courier New"];
+
+function TerminalSection() {
+  const t = useSettings().terminal;
+  const set = (patch: Partial<TerminalPrefs>) => setSettings({ terminal: { ...getSettings().terminal, ...patch } });
+  const num = (v: string, min: number, max: number) => {
+    const n = Number(v.replace(",", "."));
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : null;
+  };
+  return (
+    <>
+      <Title title="Terminal" text="The built-in terminal panel. Changes apply to open terminals right away." />
+      <H3>Text</H3>
+      <Card>
+        <Row label="Font" text="Any font installed on this computer. JetBrains Mono ships with GitHawk.">
+          <Input
+            aria-label="Terminal font"
+            list="terminal-fonts"
+            defaultValue={t.font}
+            onBlur={(e) => {
+              const v = e.currentTarget.value.trim() || "JetBrains Mono Variable";
+              if (v !== t.font) set({ font: v });
+            }}
+            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+            className={`${control} w-56 font-mono`}
+          />
+          <datalist id="terminal-fonts">
+            {FONTS.map((f) => (
+              <option key={f} value={f} />
+            ))}
+          </datalist>
+        </Row>
+        <Row label="Font size" text="8 to 32 pixels">
+          <Input
+            aria-label="Terminal font size"
+            type="number"
+            min={8}
+            max={32}
+            defaultValue={t.fontSize}
+            onBlur={(e) => {
+              const n = num(e.currentTarget.value, 8, 32);
+              if (n !== null) set({ fontSize: Math.round(n) });
+            }}
+            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+            className={`${control} w-24`}
+          />
+        </Row>
+        <Row label="Line height" text="1 is tight, 1.2 adds a little air between lines">
+          <Input
+            aria-label="Terminal line height"
+            type="number"
+            min={1}
+            max={2}
+            step={0.1}
+            defaultValue={t.lineHeight}
+            onBlur={(e) => {
+              const n = num(e.currentTarget.value, 1, 2);
+              if (n !== null) set({ lineHeight: n });
+            }}
+            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+            className={`${control} w-24`}
+          />
+        </Row>
+      </Card>
+      <H3>Cursor and focus</H3>
+      <Card>
+        <Row label="Cursor style">
+          <select aria-label="Cursor style" className={`${control} w-40`} value={t.cursor} onChange={(e) => set({ cursor: e.currentTarget.value as TerminalPrefs["cursor"] })}>
+            <option value="block">Block</option>
+            <option value="bar">Bar</option>
+            <option value="underline">Underline</option>
+          </select>
+        </Row>
+        <Row label="Blinking cursor">
+          <Switch label="Blinking cursor" checked={t.blink} onChange={(v) => set({ blink: v })} />
+        </Row>
+        <Row label="Dim when unfocused" text="Fade the terminal while you work elsewhere in the app">
+          <Switch label="Dim when unfocused" checked={t.dimUnfocused} onChange={(v) => set({ dimUnfocused: v })} />
+        </Row>
+      </Card>
+    </>
   );
 }
 
