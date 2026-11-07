@@ -153,6 +153,7 @@ export const api = {
   ignore: (root: string, pattern: string) => invoke<void>("ignore", { root, pattern }),
   commit: (root: string, id: string) => invoke<CommitInfo>("commit_info", { root, id }),
   blob: (root: string, rev: string, file: string) => invoke<ArrayBuffer>("blob", { root, rev, file }),
+  openFile: (root: string, file: string) => invoke<void>("open_file", { root, file }),
   applyLines: (root: string, file: string, mode: Mode, selected: [number, number][]) =>
     invoke<void>("apply_lines", { root, file, mode, selected }),
   run: (root: string, op: Op) => invoke<void>("run_op", { root, op }),

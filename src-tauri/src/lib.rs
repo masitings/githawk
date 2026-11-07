@@ -167,6 +167,24 @@ async fn blob(root: String, rev: String, file: String) -> Res<Response> {
     .await
 }
 
+/// Opens a file from the working tree in the app the OS associates with it.
+#[tauri::command]
+async fn open_file(app: AppHandle, root: String, file: String) -> Res<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let path = blocking(move || {
+        let root = std::fs::canonicalize(&root).map_err(|e| e.to_string())?;
+        let path = std::fs::canonicalize(root.join(&file)).map_err(|e| e.to_string())?;
+        if !path.starts_with(&root) {
+            return Err("File is outside the repository".into());
+        }
+        Ok(path)
+    })
+    .await?;
+    app.opener()
+        .open_path(path.to_string_lossy(), None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn apply_lines(
     root: String,
@@ -565,6 +583,7 @@ pub fn run() {
             diff,
             commit_info,
             blob,
+            open_file,
             apply_lines,
             run_op,
             clone_repo,

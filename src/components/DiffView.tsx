@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import hljs from "highlight.js/lib/common";
-import { X } from "lucide-react";
+import { ArrowDown, ArrowUp, Columns2, Pencil, Pilcrow, Rows2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { api, type FileDiff, type Line, type Mode, type Target } from "@/lib/api";
@@ -47,13 +47,27 @@ type Props = {
   path: string;
   version: number;
   onClose: () => void;
+  /** Shows Blame and History buttons that open the file's history view. */
+  onFile?: (tab: "history" | "blame") => void;
 };
 
-export function DiffView({ root, target, path, version, onClose }: Props) {
+const seg = (on: boolean) => `rounded px-2 py-0.5 ${on ? "bg-raised text-foreground" : "text-muted-foreground hover:text-foreground"}`;
+
+function Seg({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex shrink-0 rounded-md border p-0.5 text-xs" role="group" aria-label={label}>
+      {children}
+    </div>
+  );
+}
+
+export function DiffView({ root, target, path, version, onClose, onFile }: Props) {
   const [file, setFile] = useState<FileDiff | null>(null);
   const [error, setError] = useState("");
   const [split, setSplit] = useState(() => stored("githawk.diff.split"));
   const [ws, setWs] = useState(() => stored("githawk.diff.ignoreWhitespace"));
+  const [full, setFull] = useState(() => stored("githawk.diff.fileView"));
+  const scroller = useRef<HTMLDivElement>(null);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [anchor, setAnchor] = useState<[number, number] | null>(null);
   const [all, setAll] = useState(false);
@@ -76,6 +90,17 @@ export function DiffView({ root, target, path, version, onClose }: Props) {
 
   useEffect(() => store("githawk.diff.split", split), [split]);
   useEffect(() => store("githawk.diff.ignoreWhitespace", ws), [ws]);
+  useEffect(() => store("githawk.diff.fileView", full), [full]);
+
+  // Jumps between blocks marked data-change in either view, relative to the current scroll position.
+  function jump(dir: 1 | -1) {
+    const el = scroller.current;
+    if (!el) return;
+    const top = el.getBoundingClientRect().top;
+    const blocks = [...el.querySelectorAll<HTMLElement>("[data-change]")].map((b) => b.getBoundingClientRect().top - top);
+    const next = dir === 1 ? blocks.find((y) => y > 8) : blocks.reverse().find((y) => y < -8);
+    if (next !== undefined) el.scrollBy({ top: next - 4, behavior: "smooth" });
+  }
 
   async function apply(mode: Mode, hunk: number) {
     if (!file) return;
@@ -120,36 +145,82 @@ export function DiffView({ root, target, path, version, onClose }: Props) {
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label={`Diff of ${path}`}>
-      <header className="flex h-10 shrink-0 items-center gap-2 border-b px-3 text-sm">
-        <span className="truncate font-medium">{file?.old_path ? `${file.old_path} → ${path}` : path}</span>
-        <span className="ml-auto" />
-        <button
-          className={`shrink-0 rounded-md border px-2 py-0.5 text-xs whitespace-nowrap ${ws ? "bg-muted" : ""}`}
-          aria-pressed={ws}
-          title={ws && (target.kind === "staged" || target.kind === "unstaged") ? "Line staging is off while whitespace is ignored" : undefined}
-          onClick={() => setWs(!ws)}
-        >
-          Ignore whitespace
-        </button>
-        <div className="flex rounded-md border p-0.5 text-xs" role="group" aria-label="Diff layout">
-          <button className={`rounded px-2 py-0.5 ${!split ? "bg-muted" : ""}`} aria-pressed={!split} onClick={() => setSplit(false)}>
-            Unified
+      <header className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto border-b px-3 text-sm">
+        <span className="min-w-20 shrink truncate font-medium" title={path}>
+          {file?.old_path ? `${file.old_path} → ${path}` : path}
+        </span>
+        {(target.kind === "staged" || target.kind === "unstaged") && file?.status !== "D" && (
+          <Button
+            size="xs"
+            variant="outline"
+            className="shrink-0"
+            title="Edit in working directory"
+            onClick={() => api.openFile(root, path).catch((e) => toast.error(String(e)))}
+          >
+            <Pencil /> Edit
+          </Button>
+        )}
+        <span className="min-w-0 flex-1" />
+        <Seg label="View">
+          <button className={seg(full)} aria-pressed={full} onClick={() => setFull(true)}>
+            File view
           </button>
-          <button className={`rounded px-2 py-0.5 ${split ? "bg-muted" : ""}`} aria-pressed={split} onClick={() => setSplit(true)}>
-            Split
+          <button className={seg(!full)} aria-pressed={!full} onClick={() => setFull(false)}>
+            Diff view
           </button>
-        </div>
-        <Button variant="ghost" size="icon-sm" aria-label="Close diff" onClick={onClose}>
+        </Seg>
+        <span className="min-w-0 flex-1" />
+        {onFile && (
+          <Seg label="File">
+            <button className={seg(false)} onClick={() => onFile("blame")}>
+              Blame
+            </button>
+            <button className={seg(false)} onClick={() => onFile("history")}>
+              History
+            </button>
+          </Seg>
+        )}
+        <Seg label="Changes">
+          <button className={seg(false)} aria-label="Previous change" title="Previous change" onClick={() => jump(-1)}>
+            <ArrowUp className="size-3.5" />
+          </button>
+          <button className={seg(false)} aria-label="Next change" title="Next change" onClick={() => jump(1)}>
+            <ArrowDown className="size-3.5" />
+          </button>
+        </Seg>
+        {!full && (
+          <Seg label="Diff layout">
+            <button className={seg(!split)} aria-pressed={!split} aria-label="Unified" title="Unified" onClick={() => setSplit(false)}>
+              <Rows2 className="size-3.5" />
+            </button>
+            <button className={seg(split)} aria-pressed={split} aria-label="Split" title="Split" onClick={() => setSplit(true)}>
+              <Columns2 className="size-3.5" />
+            </button>
+          </Seg>
+        )}
+        <Seg label="Whitespace">
+          <button
+            className={seg(ws)}
+            aria-pressed={ws}
+            aria-label="Ignore whitespace"
+            title={ws && (target.kind === "staged" || target.kind === "unstaged") ? "Ignoring whitespace. Line staging is off." : "Ignore whitespace"}
+            onClick={() => setWs(!ws)}
+          >
+            <Pilcrow className="size-3.5" />
+          </button>
+        </Seg>
+        <Button variant="ghost" size="icon-sm" className="shrink-0" aria-label="Close diff" onClick={onClose}>
           <X />
         </Button>
       </header>
-      <div className="min-h-0 flex-1 overflow-auto font-mono text-xs leading-5" style={{ tabSize: TAB }}>
+      <div ref={scroller} className="min-h-0 flex-1 overflow-auto font-mono text-xs leading-5" style={{ tabSize: TAB }}>
+        {full && file && !file.binary && <FullFile root={root} revs={revs} file={file} lang={lang} version={version} />}
         {error && <p className="p-3 text-destructive">{error}</p>}
         {!file && !error && <p className="p-3 font-sans text-muted-foreground">No changes in this file.</p>}
         {file && IMAGE.test(path) && <ImageDiff root={root} revs={revs} path={path} oldPath={file.old_path ?? path} version={version} />}
         {file?.binary && !IMAGE.test(path) && <p className="p-3 text-muted-foreground">Binary file changed.</p>}
-        {file && !file.binary && !file.hunks.length && <p className="p-3 text-muted-foreground">No content changes.</p>}
-        {file?.hunks.map((h, hi) => {
+        {file && !file.binary && !file.hunks.length && !full && <p className="p-3 text-muted-foreground">No content changes.</p>}
+        {!full && file?.hunks.map((h, hi) => {
           if (budget <= 0) return null;
           const shown = h.lines.slice(0, budget);
           budget -= h.lines.length;
@@ -157,7 +228,7 @@ export function DiffView({ root, target, path, version, onClose }: Props) {
           const nSel = [...sel].filter((k) => k.startsWith(`${hi}:`)).length;
           const what = nSel ? `${nSel} line${nSel === 1 ? "" : "s"}` : "hunk";
           return (
-            <div key={hi} className="border-b">
+            <div key={hi} className="border-b" data-change>
               <div className="sticky top-0 z-10 flex items-center gap-2 bg-muted px-3 py-1 text-muted-foreground">
                 <span className="truncate">{h.header}</span>
                 {editable && (
@@ -189,7 +260,7 @@ export function DiffView({ root, target, path, version, onClose }: Props) {
             </div>
           );
         })}
-        {!all && lineCount > LIMIT && (
+        {!full && !all && lineCount > LIMIT && (
           <div className="p-3 font-sans">
             <Button variant="outline" size="sm" onClick={() => setAll(true)}>
               Show all {lineCount.toLocaleString()} lines
@@ -198,6 +269,68 @@ export function DiffView({ root, target, path, version, onClose }: Props) {
         )}
       </div>
     </section>
+  );
+}
+
+/** The whole file at the new revision (old one for deletions), with changed lines tinted. */
+function FullFile({ root, revs, file, lang, version }: { root: string; revs: string[]; file: FileDiff; lang: string | null; version: number }) {
+  const deleted = file.status === "D";
+  const [text, setText] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [all, setAll] = useState(false);
+  const rev = deleted ? revs[0] : revs[1];
+  const name = deleted ? file.old_path ?? file.path : file.path;
+  useEffect(() => {
+    let live = true;
+    setText(null);
+    setError("");
+    api
+      .blob(root, rev, name)
+      .then((b) => live && setText(new TextDecoder().decode(b)))
+      .catch((e) => live && setError(String(e)));
+    return () => {
+      live = false;
+    };
+  }, [root, rev, name, version]);
+  const marked = useMemo(() => {
+    const m = new Set<number>();
+    for (const h of file.hunks)
+      for (const l of h.lines) {
+        if (deleted && l.origin === "-" && l.old) m.add(l.old);
+        if (!deleted && l.origin === "+" && l.new) m.add(l.new);
+      }
+    return m;
+  }, [file, deleted]);
+  if (error) return <p className="p-3 font-sans text-destructive">{error}</p>;
+  if (text === null) return <p className="p-3 font-sans text-muted-foreground">Loading…</p>;
+  const lines = text.replace(/\n$/, "").split("\n");
+  const shown = all ? lines : lines.slice(0, LIMIT);
+  return (
+    <>
+      {shown.map((t, i) => {
+        const n = i + 1;
+        const on = marked.has(n);
+        const html = highlight(t, lang);
+        return (
+          <div
+            key={n}
+            data-change={on && !marked.has(n - 1) ? "" : undefined}
+            className={`flex min-w-max ${on ? (deleted ? "bg-[var(--diff-del)]" : "bg-[var(--diff-add)]") : ""}`}
+          >
+            <span className="w-12 shrink-0 pr-2 text-right text-muted-foreground select-none">{n}</span>
+            <span className="w-4 shrink-0 text-center text-muted-foreground select-none">{on ? (deleted ? "-" : "+") : ""}</span>
+            {html ? <span className="pr-4 whitespace-pre" dangerouslySetInnerHTML={{ __html: html }} /> : <span className="pr-4 whitespace-pre">{t}</span>}
+          </div>
+        );
+      })}
+      {!all && lines.length > LIMIT && (
+        <div className="p-3 font-sans">
+          <Button variant="outline" size="sm" onClick={() => setAll(true)}>
+            Show all {lines.length.toLocaleString()} lines
+          </Button>
+        </div>
+      )}
+    </>
   );
 }
 

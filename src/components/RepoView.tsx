@@ -1242,31 +1242,31 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
       )}
 
       <div className="flex min-h-0 flex-1">
-        {sidebar && (
-          <Sidebar
-            refs={refs}
-            extras={extras}
-            prs={prs}
-            hidden={new Set(view.hidden)}
-            solo={view.solo}
-            onToggleHidden={(name) =>
-              setFilter({ ...view, hidden: view.hidden.includes(name) ? view.hidden.filter((h) => h !== name) : [...view.hidden, name] })
-            }
-            onClearSolo={() => setFilter({ ...view, solo: null })}
-            onJump={select}
-            onCheckout={(name) => run({ op: "checkout", name })}
-            onCreatePr={() => createPr()}
-            onAddSubmodule={addSubmodule}
-            onAddRemote={addRemote}
-            remoteMenu={remoteMenu}
-            refMenu={refMenu}
-            stashMenu={stashMenu}
-            worktreeMenu={worktreeMenu}
-            submoduleMenu={submoduleMenu}
-            prMenu={prMenu}
-            checks={checks}
-          />
-        )}
+        <Sidebar
+          collapsed={!sidebar}
+          onCollapse={(c) => setSidebar(!c)}
+          refs={refs}
+          extras={extras}
+          prs={prs}
+          hidden={new Set(view.hidden)}
+          solo={view.solo}
+          onToggleHidden={(name) =>
+            setFilter({ ...view, hidden: view.hidden.includes(name) ? view.hidden.filter((h) => h !== name) : [...view.hidden, name] })
+          }
+          onClearSolo={() => setFilter({ ...view, solo: null })}
+          onJump={select}
+          onCheckout={(name) => run({ op: "checkout", name })}
+          onCreatePr={() => createPr()}
+          onAddSubmodule={addSubmodule}
+          onAddRemote={addRemote}
+          remoteMenu={remoteMenu}
+          refMenu={refMenu}
+          stashMenu={stashMenu}
+          worktreeMenu={worktreeMenu}
+          submoduleMenu={submoduleMenu}
+          prMenu={prMenu}
+          checks={checks}
+        />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="flex min-h-0 flex-1">
             {center.kind === "diff" && (
@@ -1276,6 +1276,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
                 path={center.path}
                 version={center.target.kind === "staged" || center.target.kind === "unstaged" ? statusVersion : 0}
                 onClose={() => setCenter({ kind: "graph" })}
+                onFile={(tab) => setCenter({ kind: "file", path: center.path, tab })}
               />
             )}
             {center.kind === "conflict" && <ConflictView root={root} path={center.path} onClose={() => setCenter({ kind: "graph" })} />}

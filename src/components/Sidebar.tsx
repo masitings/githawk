@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Archive, Check, ChevronRight, Cloud, Eye, EyeOff, Folder, FolderTree, GitPullRequest, Laptop, Package, Plus, Search, Server, Tag, X, type LucideIcon } from "lucide-react";
+import { Archive, Check, ChevronRight, Cloud, Eye, EyeOff, Folder, FolderTree, GitPullRequest, Laptop, Package, PanelLeftClose, PanelLeftOpen, Plus, Search, Server, Tag, X, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CheckState, Extras, Pr, RefLabel, Refs, Stash, Submodule, Worktree } from "@/lib/api";
 import { CheckBadge } from "@/components/Graph";
@@ -25,6 +25,8 @@ type Props = {
   submoduleMenu: (s: Submodule) => MenuItem[];
   prMenu: (p: Pr) => MenuItem[];
   checks: Record<string, CheckState>;
+  collapsed: boolean;
+  onCollapse: (collapsed: boolean) => void;
 };
 
 export function Sidebar(p: Props) {
@@ -32,6 +34,41 @@ export function Sidebar(p: Props) {
   const q = filter.toLowerCase();
   const match = (name: string) => name.toLowerCase().includes(q);
   const { refs } = p;
+  if (p.collapsed) {
+    const rail: [LucideIcon, string, number | undefined][] = [
+      [Laptop, "Local branches", refs?.local.length],
+      [Cloud, "Remotes", refs?.remotes.length],
+      [GitPullRequest, "Pull requests", p.prs?.list?.length],
+      [Tag, "Tags", refs?.tags.length],
+      [Archive, "Stashes", refs?.stashes.length],
+      [FolderTree, "Worktrees", p.extras?.worktrees.length],
+      [Package, "Submodules", p.extras?.submodules.length],
+    ];
+    return (
+      <aside className="flex w-11 shrink-0 flex-col items-center gap-1 border-r py-2" aria-label="References (collapsed)">
+        <button
+          className="mb-1 flex size-[30px] items-center justify-center rounded-lg text-muted-foreground hover:bg-panel-2 hover:text-foreground"
+          aria-label="Expand sidebar"
+          title="Expand sidebar"
+          onClick={() => p.onCollapse(false)}
+        >
+          <PanelLeftOpen className="size-4" />
+        </button>
+        {rail.map(([I, label, n]) => (
+          <button
+            key={label}
+            className="flex w-9 flex-col items-center rounded-md py-1 text-muted-foreground hover:bg-panel-2 hover:text-foreground"
+            aria-label={`${label}${n === undefined ? "" : `: ${n}`}`}
+            title={label}
+            onClick={() => p.onCollapse(false)}
+          >
+            <I className="size-4" aria-hidden />
+            {n !== undefined && <span className="text-[10.5px] leading-4 text-[var(--lane-1)]">{n}</span>}
+          </button>
+        ))}
+      </aside>
+    );
+  }
   if (!refs) return <aside className="w-60 shrink-0 border-r" />;
 
   const byRemote = new Map<string, typeof refs.remote>(refs.remotes.map((r) => [r, []]));
@@ -128,17 +165,27 @@ export function Sidebar(p: Props) {
 
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r" aria-label="References">
-      <div className="grid gap-2 px-2 pt-2.5 pb-2">
-        <label className="flex h-[30px] items-center gap-2 rounded-lg border bg-panel px-2.5 text-dim focus-within:ring-2 focus-within:ring-ring/50">
-          <Search className="size-3.5 shrink-0" aria-hidden />
-          <input
-            placeholder="Filter branches, tags…"
-            aria-label="Filter references"
-            value={filter}
-            onChange={(e) => setFilter(e.currentTarget.value)}
-            className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-dim"
-          />
-        </label>
+      <div className="grid gap-2 overflow-hidden px-2 pt-2.5 pb-2 [scrollbar-gutter:stable]">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <button
+            className="flex size-[30px] shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-panel-2 hover:text-foreground"
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+            onClick={() => p.onCollapse(true)}
+          >
+            <PanelLeftClose className="size-4" />
+          </button>
+          <label className="flex h-[30px] min-w-0 flex-1 items-center gap-2 rounded-lg border bg-panel px-2.5 text-dim focus-within:ring-2 focus-within:ring-ring/50">
+            <Search className="size-3.5 shrink-0" aria-hidden />
+            <input
+              placeholder="Filter branches, tags…"
+              aria-label="Filter references"
+              value={filter}
+              onChange={(e) => setFilter(e.currentTarget.value)}
+              className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-dim"
+            />
+          </label>
+        </div>
         {p.solo && (
           <div className="flex items-center gap-1 rounded-md bg-raised px-2 py-1 text-xs">
             <span className="flex-1 truncate">Solo: {p.solo}</span>
@@ -149,7 +196,7 @@ export function Sidebar(p: Props) {
         )}
         {p.extras?.lfs && <span className="w-fit rounded border px-1.5 text-xs text-muted-foreground">Git LFS</span>}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto px-2 pb-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto px-2 pb-3 [scrollbar-gutter:stable]">
         <Section title="Local" icon={Laptop} count={refs.local.length} empty="No local branches">
           {folders(
             refs.local.filter((b) => match(b.name)),
