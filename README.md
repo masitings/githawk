@@ -71,6 +71,14 @@ GitHawk has no telemetry and no crash reporting. It never sends usage data, erro
 
 If something breaks, looks wrong or is missing, please [open an issue](https://github.com/masitings/githawk/issues/new). Include your OS, the GitHawk version, what you did and what happened. If a git operation failed, copy the failing command from the command log (⌘⇧R). Remove tokens, private URLs and anything else you don't want public before posting.
 
+## How GitHawk is made
+
+GitHawk is written from scratch. It was not built by reverse engineering GitKraken or any other Git client, and no reverse engineering tools (such as Reverse Engineering Anything) were used. No code, assets or binaries from other clients were decompiled, inspected or copied.
+
+Its features follow the Indonesian idea of **ATM: Amati, Tiru, Modifikasi** (observe, imitate, modify). We use other Git clients as ordinary users, look at what they do well, and then write our own implementation in our own way, on top of the real `git` CLI and libgit2.
+
+GitHawk is an independent project and is not affiliated with or endorsed by GitKraken or Axosoft. Product names mentioned here belong to their owners.
+
 ## License
 
 [Apache License 2.0](LICENSE)
