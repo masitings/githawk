@@ -1283,6 +1283,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
             {center.kind === "file" && (
               <FileView
                 root={root}
+                avatars={settings.ui.avatars ? (avatars ?? {}) : null}
                 path={center.path}
                 tab={center.tab}
                 onTab={(tab) => setCenter({ ...center, tab })}

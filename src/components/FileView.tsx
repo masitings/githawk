@@ -4,9 +4,11 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { api, date, short, type BlameLine, type FileCommit } from "@/lib/api";
 import { DiffView } from "@/components/DiffView";
+import { avatarUrl } from "@/lib/avatars";
 
 type Props = {
   root: string;
+  avatars: Record<string, string> | null;
   path: string;
   tab: "history" | "blame";
   onTab: (t: "history" | "blame") => void;
@@ -14,7 +16,7 @@ type Props = {
   onClose: () => void;
 };
 
-export function FileView({ root, path, tab, onTab, onSelectCommit, onClose }: Props) {
+export function FileView({ root, avatars, path, tab, onTab, onSelectCommit, onClose }: Props) {
   const [history, setHistory] = useState<FileCommit[] | null>(null);
   const [blame, setBlame] = useState<BlameLine[] | null>(null);
   const [picked, setPicked] = useState<FileCommit | null>(null);
@@ -55,14 +57,17 @@ export function FileView({ root, path, tab, onTab, onSelectCommit, onClose }: Pr
             {history?.map((c) => (
               <li key={c.id}>
                 <button
-                  className={`grid w-full gap-0.5 px-3 py-1.5 text-left text-sm ${picked?.id === c.id ? "bg-accent" : "hover:bg-muted"}`}
+                  className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm ${picked?.id === c.id ? "bg-accent" : "hover:bg-muted"}`}
                   onClick={() => setPicked(c)}
                   onDoubleClick={() => onSelectCommit(c.id)}
                 >
-                  <span className="truncate">{c.summary}</span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {short(c.id)} · {c.author} · {date(c.time)}
-                    {c.path !== path && ` · was ${c.path}`}
+                  <Avatar name={c.author} email={c.email} avatars={avatars} />
+                  <span className="grid min-w-0 flex-1 gap-0.5">
+                    <span className="truncate">{c.summary}</span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {short(c.id)} · {c.author} · {date(c.time)}
+                      {c.path !== path && ` · was ${c.path}`}
+                    </span>
                   </span>
                 </button>
               </li>
@@ -96,5 +101,21 @@ export function FileView({ root, path, tab, onTab, onSelectCommit, onClose }: Pr
         </div>
       )}
     </section>
+  );
+}
+
+function Avatar({ name, email, avatars }: { name: string; email: string; avatars: Record<string, string> | null }) {
+  const [failed, setFailed] = useState(false);
+  const url = avatars && !failed ? avatarUrl(email, avatars) : undefined;
+  const letters = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join("");
+  return (
+    <span aria-hidden className="inline-flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-raised text-[10.5px] font-semibold">
+      {url ? <img src={url} alt="" className="size-full object-cover" onError={() => setFailed(true)} /> : letters}
+    </span>
   );
 }

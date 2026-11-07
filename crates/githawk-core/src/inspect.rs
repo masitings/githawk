@@ -52,6 +52,7 @@ pub fn resolve(root: &str, file: &str, content: &str) -> Result<(), String> {
 pub struct FileCommit {
     pub id: String,
     pub author: String,
+    pub email: String,
     /// Unix seconds, UTC.
     pub time: i64,
     pub summary: String,
@@ -67,7 +68,7 @@ pub fn history(root: &str, file: &str) -> Result<Vec<FileCommit>, String> {
             "--no-show-signature",
             "--follow",
             "--name-only",
-            "--format=%x1e%H%x1f%an%x1f%at%x1f%s",
+            "--format=%x1e%H%x1f%an%x1f%ae%x1f%at%x1f%s",
             "--",
             file,
         ],
@@ -81,6 +82,7 @@ pub fn history(root: &str, file: &str) -> Result<Vec<FileCommit>, String> {
             Some(FileCommit {
                 id: f.next()?.to_owned(),
                 author: f.next()?.to_owned(),
+                email: f.next()?.to_owned(),
                 time: f.next()?.parse().ok()?,
                 summary: f.next().unwrap_or_default().to_owned(),
                 path: lines.next().unwrap_or(file).to_owned(),
