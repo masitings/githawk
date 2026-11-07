@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check, CircleCheck, CircleDot, CircleX, Cloud, Laptop, Tag } from "lucide-react";
-import { api, date, lane, type CheckState, type Opened, type RefLabel, type Row } from "@/lib/api";
+import { api, date, lane, short, type CheckState, type Opened, type RefLabel, type Row } from "@/lib/api";
 import { WithMenu, type MenuItem } from "@/components/Menu";
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import {
@@ -13,9 +13,10 @@ import {
   DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import { avatarImage, avatarUrl } from "@/lib/avatars";
+import { useSettings } from "@/lib/settings";
 
-const ROW = 28;
-const LANE = 18;
+const ROW = 34;
+const LANE = 22;
 const PAGE = 500;
 const REFS_W = 210;
 const GRAPH_MIN = 100;
@@ -71,6 +72,8 @@ export function Graph(p: Props) {
   const [lanes, setLanes] = useState(1);
   const [more] = useState(() => MenuPrimitive.createHandle<RefLabel[]>());
   const [, rerender] = useReducer((x: number) => x + 1, 0);
+  const ui = useSettings().ui;
+  const refsW = ui.graphRefs ? REFS_W : 8;
   const scrollRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const versionRef = useRef(p.version);
@@ -297,11 +300,12 @@ export function Graph(p: Props) {
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <MoreRefs handle={more} refMenu={p.refMenu} />
       <div aria-hidden className="flex h-7 shrink-0 items-center overflow-hidden border-b bg-panel text-[11px] font-semibold tracking-[0.6px] whitespace-nowrap text-dim uppercase">
-        <span className="shrink-0 pl-3" style={{ width: REFS_W }}>Branch / tag</span>
+        <span className="shrink-0 truncate pl-3" style={{ width: refsW }}>{ui.graphRefs && "Branch / tag"}</span>
         <span className="shrink-0" style={{ width: graphW }}>Graph</span>
         <span className="min-w-40 flex-1 truncate pr-3">Commit message</span>
-        <span className="w-30 min-w-0 truncate pr-2">Author</span>
-        <span className="w-32 min-w-0 truncate pr-2">Date</span>
+        {ui.graphSha && <span className="w-18 min-w-0 truncate pr-2">SHA</span>}
+        {ui.graphAuthor && <span className="w-30 min-w-0 truncate pr-2">Author</span>}
+        {ui.graphDate && <span className="w-32 min-w-0 truncate pr-2">Date</span>}
       </div>
       <div className="relative min-h-0 flex-1">
         <div
@@ -314,7 +318,7 @@ export function Graph(p: Props) {
           className="h-full overflow-auto outline-none"
         >
           <div className="relative" style={{ height: v.getTotalSize() }}>
-            <canvas ref={canvasRef} aria-hidden className="pointer-events-none absolute z-10" style={{ left: REFS_W }} />
+            <canvas ref={canvasRef} aria-hidden className="pointer-events-none absolute z-10" style={{ left: refsW }} />
             {items.map((it) => {
               const style = { top: it.start, height: ROW };
               if (off && it.index === 0) {
@@ -329,7 +333,7 @@ export function Graph(p: Props) {
                     className={`absolute inset-x-1 flex items-center overflow-hidden rounded-md border-y-2 border-transparent bg-clip-padding text-sm ${sel ? "bg-raised" : "hover:bg-panel-2"}`}
                     style={style}
                   >
-                    <div style={{ width: REFS_W - 4 + graphW }} className="shrink-0" />
+                    <div style={{ width: refsW - 4 + graphW }} className="shrink-0" />
                     <span className="min-w-40 flex-1 truncate pr-3 italic text-muted-foreground">
                       {"// WIP"} · {p.wip} changed file{p.wip === 1 ? "" : "s"}
                     </span>
@@ -353,16 +357,21 @@ export function Graph(p: Props) {
                     background: sel ? `color-mix(in oklab, ${lane(r.color)} 26%, transparent)` : undefined,
                   }}
                 >
-                  <div className="relative flex shrink-0 items-center gap-1 overflow-hidden pr-3 pl-1.5" style={{ width: REFS_W - 4 }}>
-                    {r.refs.length > 0 && (
+                  <div className="relative flex shrink-0 items-center gap-1 overflow-hidden pr-3 pl-1.5" style={{ width: refsW - 4 }}>
+                    {ui.graphRefs && r.refs.length > 0 && (
                       <span aria-hidden className="absolute top-1/2 right-0 left-3 h-0.5 -translate-y-1/2" style={{ background: lane(r.color) }} />
                     )}
-                    <Pills row={r} refMenu={p.refMenu} onDropRef={p.onDropRef} onOpenRef={p.onOpenRef} more={more} checks={p.checks} />
+                    {ui.graphRefs && <Pills row={r} refMenu={p.refMenu} onDropRef={p.onDropRef} onOpenRef={p.onOpenRef} more={more} checks={p.checks} />}
                   </div>
                   <div className="shrink-0" style={{ width: graphW }} />
                   <span className="min-w-40 flex-1 truncate pr-3">{r.summary}</span>
-                  <span className="w-30 min-w-0 truncate pr-2 text-xs text-muted-foreground">{r.author}</span>
-                  <time className="w-32 min-w-0 truncate pr-2 text-xs text-dim">{date(r.time)}</time>
+                  {ui.graphSha && <span className="w-18 min-w-0 truncate pr-2 font-mono text-xs text-dim">{short(r.id)}</span>}
+                  {ui.graphAuthor && <span className="w-30 min-w-0 truncate pr-2 text-xs text-muted-foreground">{r.author}</span>}
+                  {ui.graphDate && (
+                    <time className="w-32 min-w-0 truncate pr-2 text-xs text-dim" title={date(r.time, "long")}>
+                      {date(r.time)}
+                    </time>
+                  )}
                 </WithMenu>
               );
             })}

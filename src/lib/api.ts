@@ -213,5 +213,28 @@ export const api = {
 
 export const short = (id: string) => id.slice(0, 7);
 export const lane = (i: number) => `var(--lane-${i % 8})`;
-export const date = (t: number) =>
-  new Date(t * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+export const ago = (t: number) => {
+  const s = Math.max(0, Date.now() / 1000 - t);
+  if (s < 60) return "just now";
+  const n = (v: number, unit: string) => `${v} ${unit}${v === 1 ? "" : "s"} ago`;
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return n(Math.floor(s / 3600), "hour");
+  if (s < 86400 * 60) return n(Math.floor(s / 86400), "day");
+  if (s < 86400 * 730) return n(Math.floor(s / (86400 * 30)), "month");
+  return n(Math.floor(s / (86400 * 365)), "year");
+};
+
+export type DateStyle = "relative" | "short" | "medium" | "long" | "iso";
+let dateStyle: DateStyle = "medium";
+export const setDateStyle = (s: DateStyle) => (dateStyle = s);
+
+/** `t` is Unix seconds; shown in the user's chosen style and local time zone. */
+export const date = (t: number, style = dateStyle) => {
+  const d = new Date(t * 1000);
+  if (style === "relative") return ago(t);
+  if (style === "iso") {
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+  return d.toLocaleString(undefined, { dateStyle: style, timeStyle: "short" });
+};

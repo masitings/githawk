@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { api, type AiTask, type MergeMethod, type Server } from "@/lib/api";
+import { api, setDateStyle, type AiTask, type DateStyle, type MergeMethod, type Server } from "@/lib/api";
 
 export type Profile = {
   id: string;
@@ -23,8 +23,23 @@ export type Settings = {
   prMerge: MergeMethod;
   showChecks: boolean;
   terminal: TerminalPrefs;
+  ui: UiPrefs;
   /** `x`/`y` are pixels from the window's bottom-right corner. */
   pet: { enabled: boolean; id: string; size: number; x: number; y: number };
+};
+
+export type UiPrefs = {
+  toasts: "bottom-right" | "bottom-left" | "top-right" | "top-left" | "bottom-center" | "top-center";
+  dates: DateStyle;
+  toolbarLabels: boolean;
+  avatars: boolean;
+  spellcheck: boolean;
+  graphRefs: boolean;
+  graphAuthor: boolean;
+  graphDate: boolean;
+  graphSha: boolean;
+  fileView: "path" | "tree";
+  pushAfterCommit: boolean;
 };
 
 export type TerminalPrefs = {
@@ -85,6 +100,19 @@ const DEFAULT: Settings = {
   prMerge: "merge",
   showChecks: true,
   pet: { enabled: false, id: "", size: 120, x: 24, y: 40 },
+  ui: {
+    toasts: "bottom-right",
+    dates: "medium",
+    toolbarLabels: true,
+    avatars: true,
+    spellcheck: true,
+    graphRefs: true,
+    graphAuthor: true,
+    graphDate: true,
+    graphSha: false,
+    fileView: "path",
+    pushAfterCommit: false,
+  },
   terminal: { font: "JetBrains Mono Variable", fontSize: 12, lineHeight: 1, cursor: "block", blink: true, dimUnfocused: false },
 };
 
@@ -93,7 +121,7 @@ const KEY = "githawk.settings";
 function read(): Settings {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) ?? "null");
-    return s ? { ...DEFAULT, ...s, shortcuts: { ...DEFAULT_SHORTCUTS, ...s.shortcuts }, ai: { ...DEFAULT.ai, ...s.ai }, terminal: { ...DEFAULT.terminal, ...s.terminal }, pet: { ...DEFAULT.pet, ...s.pet } } : DEFAULT;
+    return s ? { ...DEFAULT, ...s, shortcuts: { ...DEFAULT_SHORTCUTS, ...s.shortcuts }, ai: { ...DEFAULT.ai, ...s.ai }, terminal: { ...DEFAULT.terminal, ...s.terminal }, pet: { ...DEFAULT.pet, ...s.pet }, ui: { ...DEFAULT.ui, ...s.ui } } : DEFAULT;
   } catch {
     return DEFAULT;
   }
@@ -137,6 +165,7 @@ export const aiRun = (root: string, task: AiTask) =>
 const dark = matchMedia("(prefers-color-scheme: dark)");
 
 export function applySettings() {
+  setDateStyle(current.ui.dates);
   const t = current.theme;
   document.documentElement.classList.toggle("dark", t === "dark" || (t === "system" && dark.matches));
   const p = activeProfile();

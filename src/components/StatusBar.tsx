@@ -1,20 +1,11 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Cloud, ShieldCheck } from "lucide-react";
-import { api } from "@/lib/api";
+import { ago, api } from "@/lib/api";
 
 let version: Promise<string> | undefined;
 
-export const ago = (t: number) => {
-  const s = Math.max(0, Date.now() / 1000 - t);
-  if (s < 60) return "just now";
-  const n = (v: number, unit: string) => `${v} ${unit}${v === 1 ? "" : "s"} ago`;
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86400) return n(Math.floor(s / 3600), "hour");
-  if (s < 86400 * 60) return n(Math.floor(s / 86400), "day");
-  if (s < 86400 * 730) return n(Math.floor(s / (86400 * 30)), "month");
-  return n(Math.floor(s / (86400 * 365)), "year");
-};
+export { ago } from "@/lib/api";
 
 export const prettyRemote = (url: string) =>
   url

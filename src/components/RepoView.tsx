@@ -1104,7 +1104,9 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex min-h-[54px] shrink-0 items-center gap-0.5 overflow-x-auto border-b bg-panel px-3 py-1">
+      <div
+        className={`flex min-h-[54px] shrink-0 items-center gap-0.5 overflow-x-auto border-b bg-panel px-3 py-1 ${settings.ui.toolbarLabels ? "" : "[&_button]:min-w-10 [&_button]:text-[0px]"}`}
+      >
         <div className="flex h-11 max-w-56 min-w-24 shrink-0 flex-col justify-center overflow-hidden px-2.5">
           <span className="text-[10.5px] tracking-[0.6px] text-dim uppercase">Branch</span>
           <span className="flex min-w-0 items-center gap-1.5 text-sm font-semibold" title="Current branch">
@@ -1334,7 +1336,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
                     onDropRef={onDropRef}
                     onOpenRef={onOpenRef}
                     checks={checks}
-                    avatars={avatars}
+                    avatars={settings.ui.avatars ? avatars : null}
                   />
                 )
               ) : (
@@ -1393,6 +1395,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
               onConflict={(path) => setCenter({ kind: "conflict", path })}
               fileMenu={fileMenu}
               run={run}
+              onPush={() => push()}
             />
           ) : selected ? (
             <CommitPanel
@@ -1402,7 +1405,7 @@ export function RepoView({ root, initial, progress, active, onOpenRepo, onOpenSe
               onOpen={(target, path) => setCenter({ kind: "diff", target, path })}
               onSelect={select}
               fileMenu={fileMenu}
-              avatars={avatars}
+              avatars={settings.ui.avatars ? avatars : null}
             />
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">

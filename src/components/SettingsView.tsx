@@ -10,8 +10,8 @@ import { gravatarUrl } from "@/lib/avatars";
 import { addPet, browsePets, choosePet, install, usePets } from "@/lib/pet";
 import { open as pickFile } from "@tauri-apps/plugin-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { api, type GpgKey, type Provider, type Server, type SshKey } from "@/lib/api";
-import { ACTIONS, DEFAULT_SHORTCUTS, account, activeProfile, comboOf, getSettings, prettyCombo, setSettings, useSettings, type Profile, type TerminalPrefs } from "@/lib/settings";
+import { api, date, type DateStyle, type GpgKey, type Provider, type Server, type SshKey } from "@/lib/api";
+import { ACTIONS, DEFAULT_SHORTCUTS, account, activeProfile, comboOf, getSettings, prettyCombo, setSettings, useSettings, type Profile, type TerminalPrefs, type UiPrefs } from "@/lib/settings";
 import { ask, confirm } from "@/lib/prompt";
 
 type Keyed = { id: string; name: string; url: string; hint: string };
@@ -55,6 +55,7 @@ const SECTIONS = [
   ["keys", "SSH, GPG and HTTPS", "ssh key generate gpg signing credential helper https password"],
   ["git", "Git", "default branch pull rebase prune upstream line endings autocrlf sign version"],
   ["ai", "AI assistant", "anthropic openai ollama model key commit message explain changelog"],
+  ["interface", "Interface", "ui customization notifications toasts position date time format toolbar labels avatars initials spell checking graph columns author sha branch tag"],
   ["terminal", "Terminal", "in-app terminal font size line height cursor blink dim unfocused monospace"],
   ["pet", "Pet", "pet companion codex pets animated mascot size"],
   ["shortcuts", "Keyboard shortcuts", "keys hotkeys keyboard"],
@@ -347,6 +348,8 @@ export function SettingsView({ initial = "general", onClose }: { initial?: Setti
             </>
           )}
 
+          {section === "interface" && <InterfaceSection />}
+
           {section === "terminal" && <TerminalSection />}
 
           {section === "pet" && <PetSection />}
@@ -407,6 +410,55 @@ export function SettingsView({ initial = "general", onClose }: { initial?: Setti
 }
 
 const FONTS = ["JetBrains Mono Variable", "SF Mono", "Menlo", "Monaco", "Cascadia Code", "Cascadia Mono", "Consolas", "Fira Code", "Source Code Pro", "Hack", "Ubuntu Mono", "DejaVu Sans Mono", "Courier New"];
+
+const SAMPLE_TIME = Math.floor(Date.now() / 1000) - 3 * 3600;
+
+function InterfaceSection() {
+  const ui = useSettings().ui;
+  const set = (patch: Partial<UiPrefs>) => setSettings({ ui: { ...getSettings().ui, ...patch } });
+  const toggle = (key: keyof UiPrefs, label: string, text?: string) => (
+    <Row label={label} text={text}>
+      <Switch label={label} checked={ui[key] as boolean} onChange={(v) => set({ [key]: v })} />
+    </Row>
+  );
+  return (
+    <>
+      <Title title="Interface" text="Adjust how GitHawk looks. Theme lives under General." />
+      <H3>Display</H3>
+      <Card>
+        <Row label="Notification position" text="Where success and error messages appear">
+          <select aria-label="Notification position" className={`${control} w-50`} value={ui.toasts} onChange={(e) => set({ toasts: e.currentTarget.value as UiPrefs["toasts"] })}>
+            <option value="bottom-right">Bottom right</option>
+            <option value="bottom-center">Bottom center</option>
+            <option value="bottom-left">Bottom left</option>
+            <option value="top-right">Top right</option>
+            <option value="top-center">Top center</option>
+            <option value="top-left">Top left</option>
+          </select>
+        </Row>
+        <Row label="Date format" text={`Uses your system language and time zone. Example: ${date(SAMPLE_TIME, ui.dates)}`}>
+          <select aria-label="Date format" className={`${control} w-50`} value={ui.dates} onChange={(e) => set({ dates: e.currentTarget.value as DateStyle })}>
+            <option value="relative">Relative ({date(SAMPLE_TIME, "relative")})</option>
+            <option value="short">Short ({date(SAMPLE_TIME, "short")})</option>
+            <option value="medium">Medium ({date(SAMPLE_TIME, "medium")})</option>
+            <option value="long">Long</option>
+            <option value="iso">ISO ({date(SAMPLE_TIME, "iso")})</option>
+          </select>
+        </Row>
+        {toggle("toolbarLabels", "Show toolbar labels", "Text under the toolbar icons. Off shows icons only.")}
+        {toggle("avatars", "Show author photos", "Off shows initials or a generic icon instead of photos from GitHub or GitLab")}
+        {toggle("spellcheck", "Spell check commit messages")}
+      </Card>
+      <H3>Commit graph columns</H3>
+      <Card>
+        {toggle("graphRefs", "Branches and tags")}
+        {toggle("graphSha", "Commit SHA")}
+        {toggle("graphAuthor", "Author")}
+        {toggle("graphDate", "Date")}
+      </Card>
+    </>
+  );
+}
 
 function PetSection() {
   const pet = useSettings().pet;

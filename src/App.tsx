@@ -321,7 +321,7 @@ export default function App() {
       <CloneDialog open={cloneOpen} onOpenChange={setCloneOpen} onClone={cloneFrom} />
       {prefs.pet.enabled && prefs.pet.id && <Pet onSettings={() => setSettingsOpen(true, "pet")} />}
       <PromptHost />
-      <Toaster richColors theme="system" position="bottom-right" />
+      <Toaster richColors theme="system" position={prefs.ui.toasts} />
     </TooltipProvider>
   );
 }
